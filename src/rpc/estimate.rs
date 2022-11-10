@@ -8,7 +8,8 @@ use super::common::Operations;
 pub struct EstimateRequest<'a> {
     pub(crate) to: Address,
     pub(crate) value: u64,
-    pub(crate) data: &'a Bytes,
+    #[serde(serialize_with = "crate::rpc::common::default_empty_bytes_ref")]
+    pub(crate) data: Option<&'a Bytes>,
     pub(crate) operation: Operations,
 }
 
@@ -23,7 +24,7 @@ impl<'a> EstimateRequest<'a> {
 
 #[derive(Debug, Clone, Copy, serde::Deserialize)]
 pub struct EstimateResponse {
-    safe_tx_gas: U256,
+    pub safe_tx_gas: U256,
 }
 
 impl std::ops::Deref for EstimateResponse {

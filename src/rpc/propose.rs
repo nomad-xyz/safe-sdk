@@ -17,10 +17,11 @@ use super::{common::SAFE_TX_TYPEHASH, estimate::EstimateRequest};
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct MetaTransactionData {
-    to: Address,
-    value: U256,
-    data: Bytes,
-    operation: Option<Operations>,
+    pub(crate) to: Address,
+    pub(crate) value: U256,
+    #[serde(serialize_with = "crate::rpc::common::default_empty_bytes")]
+    pub(crate) data: Option<Bytes>,
+    pub(crate) operation: Option<Operations>,
 }
 
 impl<'a> From<&'a MetaTransactionData> for EstimateRequest<'a> {
@@ -28,7 +29,7 @@ impl<'a> From<&'a MetaTransactionData> for EstimateRequest<'a> {
         EstimateRequest {
             to: val.to,
             value: val.value.low_u64(),
-            data: &val.data,
+            data: val.data.as_ref(),
             operation: val.operation.unwrap_or(Operations::Call),
         }
     }
@@ -38,13 +39,24 @@ impl<'a> From<&'a MetaTransactionData> for EstimateRequest<'a> {
 #[serde(rename_all = "camelCase")]
 pub struct SafeTransactionData {
     #[serde(flatten)]
-    core: MetaTransactionData,
-    safe_tx_gas: U256,
-    base_gas: U256,
-    gas_price: U256,
-    gas_token: Address,
-    refund_receiver: Address,
-    nonce: U256,
+    pub core: MetaTransactionData,
+    /// Gas to be forwarded to the callee. 0 for all available
+    pub safe_tx_gas: U256,
+    /// Gas cost that is independent of the internal transaction execution,
+    /// (e.g. base transaction fee, signature check, payment of the refund)
+    pub base_gas: U256,
+    /// Maximum gas price that should be used for this transaction. 0 for no
+    /// maximum. For base layer tokens, (e.g. ETH), this is adjusted to be no
+    /// higher than that actual gas price used. For custom refund tokens, it
+    /// may be any amount.
+    pub gas_price: U256,
+    /// Token address (or 0 if ETH) that is used for the reimbursement payment
+    /// to the executor.
+    pub gas_token: Address,
+    /// The address which receives the refund. Defaults to `tx.origin` if empty
+    pub refund_receiver: Address,
+    /// The Safe nonce to use
+    pub nonce: U256,
 }
 
 impl<'a> From<&'a SafeTransactionData> for EstimateRequest<'a> {
@@ -114,7 +126,7 @@ impl SafeTransactionData {
             *SAFE_TX_TYPEHASH,
             self.core.to,
             self.core.value,
-            H256::from(keccak256(&self.core.data)),
+            H256::from(keccak256(&self.core.data.as_deref().unwrap_or(&[]))),
             self.core.operation.unwrap_or(Operations::Call) as u8,
             self.safe_tx_gas,
             self.base_gas,
@@ -161,12 +173,12 @@ impl SafeTransactionData {
 
     /// Sign the afe Transaction hash and create a safe transaction service
     /// Propose request
-    pub async fn to_request<S: Signer>(
-        &self,
+    pub async fn into_request<S: Signer>(
+        self,
         signer: &S,
         safe_address: Address,
         chain_id: U256,
-    ) -> Result<ProposeRequest<'_>, S::Error> {
+    ) -> Result<ProposeRequest, S::Error> {
         let signature = self.sign(signer, safe_address, chain_id).await?;
         let contract_transaction_hash = self.struct_hash(safe_address, chain_id);
         Ok(ProposeRequest {
@@ -198,20 +210,32 @@ impl ProposeSignature {
     }
 }
 
-#[derive(serde::Serialize, Clone, Debug)]
-pub struct ProposeRequest<'a> {
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct ProposeRequest {
     #[serde(flatten)]
-    tx: &'a SafeTransactionData,
-    contract_transaction_hash: H256,
+    pub(crate) tx: SafeTransactionData,
+    pub(crate) contract_transaction_hash: H256,
     #[serde(flatten)]
-    signature: ProposeSignature,
+    pub(crate) signature: ProposeSignature,
 }
 
-impl<'a> ProposeRequest<'a> {
+impl ProposeRequest {
     pub fn url(root: &Url, safe_address: Address) -> Url {
         let path = format!("v1/safes/{:?}/multisig-transactions/", safe_address);
         let mut url = root.clone();
         url.set_path(&path);
         url
+    }
+
+    pub fn tx(&self) -> &SafeTransactionData {
+        &self.tx
+    }
+
+    pub fn contract_transaction_hash(&self) -> H256 {
+        self.contract_transaction_hash
+    }
+
+    pub fn signature(&self) -> &ProposeSignature {
+        &self.signature
     }
 }

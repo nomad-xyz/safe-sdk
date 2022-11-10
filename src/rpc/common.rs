@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use ethers::types::H256;
+use ethers::types::{Bytes, H256};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 
@@ -30,6 +30,32 @@ pub static DOMAIN_SEPARATOR_TYPEHASH: Lazy<H256> = Lazy::new(|| {
         .parse()
         .unwrap()
 });
+
+pub(crate) fn default_empty_bytes_ref<S>(
+    bytes: &Option<&Bytes>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    match bytes {
+        Some(buf) => buf.serialize(serializer),
+        None => Bytes::default().serialize(serializer),
+    }
+}
+
+pub(crate) fn default_empty_bytes<S>(
+    bytes: &Option<Bytes>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    match bytes {
+        Some(buf) => buf.serialize(serializer),
+        None => Bytes::default().serialize(serializer),
+    }
+}
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Operations {

@@ -72,6 +72,7 @@ where
     }
 }
 
+#[derive(Debug)]
 /// A Safe Transaction Service client
 pub struct GnosisClient {
     pub(crate) url: reqwest::Url,
@@ -86,6 +87,7 @@ impl Deref for GnosisClient {
     }
 }
 
+#[derive(Debug)]
 /// A Safe Transaction Service client with signing and tx submission
 /// capabilities
 pub struct SigningClient<S> {
@@ -204,21 +206,28 @@ impl GnosisClient {
 }
 
 impl<S: Signer> SigningClient<S> {
+    pub async fn submit_proposal(
+        &self,
+        proposal: ProposeRequest,
+        safe_address: Address,
+    ) -> SigningClientResult<(), S> {
+        json_post!(
+            self.client,
+            ProposeRequest::url(&self.url, safe_address),
+            &proposal
+        )
+        .map_err(Into::into)
+    }
     pub async fn propose_tx(
         &self,
-        tx: &SafeTransactionData,
+        tx: SafeTransactionData,
         safe_address: Address,
         chain_id: U256,
     ) -> SigningClientResult<(), S> {
-        let req = tx
-            .to_request(&self.signer, safe_address, chain_id)
+        let proposal = tx
+            .into_request(&self.signer, safe_address, chain_id)
             .await
             .map_err(SigningClientError::SignerError)?;
-        let resp = json_post!(
-            self.client,
-            ProposeRequest::url(&self.url, safe_address),
-            &req
-        );
-        resp.map_err(Into::into)
+        self.submit_proposal(proposal, safe_address).await
     }
 }

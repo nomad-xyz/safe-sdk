@@ -15,14 +15,14 @@ impl SafeInfoRequest {
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct SafeInfoResponse {
-    address: Address,
-    nonce: U256,
-    threshold: u32,
-    owners: Vec<Address>,
-    master_copy: Address,
-    modules: Vec<String>,
-    fallback_handler: Address,
-    guard: Address,
+    pub address: Address,
+    pub nonce: U256,
+    pub threshold: u32,
+    pub owners: Vec<Address>,
+    pub master_copy: Address,
+    pub modules: Vec<String>,
+    pub fallback_handler: Address,
+    pub guard: Address,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    version: Option<String>,
+    pub version: Option<String>,
 }
