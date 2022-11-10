@@ -9,6 +9,7 @@ use ethers::{
     },
     utils::keccak256,
 };
+use reqwest::Url;
 
 use crate::rpc::common::{Operations, DOMAIN_SEPARATOR_TYPEHASH};
 
@@ -104,9 +105,10 @@ impl SafeTransactionData {
         encoded[64 + 12..].copy_from_slice(safe_address.as_bytes());
 
         let tokens = (*DOMAIN_SEPARATOR_TYPEHASH, chain_id, safe_address).into_tokens();
-        return keccak256(ethers::abi::encode(&tokens)).into();
+        keccak256(ethers::abi::encode(&tokens)).into()
     }
 
+    /// Encode this struct suitable for EIP-712 signing
     pub fn encode_struct(&self) -> Vec<u8> {
         let tokens = (
             *SAFE_TX_TYPEHASH,
@@ -125,6 +127,7 @@ impl SafeTransactionData {
         ethers::abi::encode(&tokens)
     }
 
+    /// Calculate the EIP712 struct hash
     fn struct_hash(&self, safe_address: Address, chain_id: U256) -> H256 {
         SafeEip712 {
             address: safe_address,
@@ -139,7 +142,7 @@ impl SafeTransactionData {
     /// Sign the safe transaction hash
     async fn sign<S: Signer>(
         &self,
-        signer: S,
+        signer: &S,
         safe_address: Address,
         chain_id: U256,
     ) -> Result<ProposeSignature, S::Error> {
@@ -156,12 +159,14 @@ impl SafeTransactionData {
         })
     }
 
-    pub async fn into_request<S: Signer>(
-        self,
-        signer: S,
+    /// Sign the afe Transaction hash and create a safe transaction service
+    /// Propose request
+    pub async fn to_request<S: Signer>(
+        &self,
+        signer: &S,
         safe_address: Address,
         chain_id: U256,
-    ) -> Result<ProposeRequest, S::Error> {
+    ) -> Result<ProposeRequest<'_>, S::Error> {
         let signature = self.sign(signer, safe_address, chain_id).await?;
         let contract_transaction_hash = self.struct_hash(safe_address, chain_id);
         Ok(ProposeRequest {
@@ -175,16 +180,38 @@ impl SafeTransactionData {
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct ProposeSignature {
     sender: Address,
+    /// Must be in RSV format
     signature: Signature,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     origin: Option<String>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
-pub struct ProposeRequest {
+impl ProposeSignature {
+    /// Getter for `signature`
+    pub fn signature(&self) -> Signature {
+        self.signature
+    }
+
+    /// Getter for `sender`
+    pub fn sender(&self) -> Address {
+        self.sender
+    }
+}
+
+#[derive(serde::Serialize, Clone, Debug)]
+pub struct ProposeRequest<'a> {
     #[serde(flatten)]
-    tx: SafeTransactionData,
+    tx: &'a SafeTransactionData,
     contract_transaction_hash: H256,
     #[serde(flatten)]
     signature: ProposeSignature,
+}
+
+impl<'a> ProposeRequest<'a> {
+    pub fn url(root: &Url, safe_address: Address) -> Url {
+        let path = format!("v1/safes/{:?}/multisig-transactions/", safe_address);
+        let mut url = root.clone();
+        url.set_path(&path);
+        url
+    }
 }

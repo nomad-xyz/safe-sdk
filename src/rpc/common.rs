@@ -19,6 +19,9 @@ pub static SAFE_TX_TYPEHASH: Lazy<H256> = Lazy::new(|| {
 
 /// EIP-712 typehash domain binding. Copied from gnosis safe contracts
 ///
+/// EIP712 supports several forms of domain binding, but only veriifer and
+/// chain id are used here. See [`ethers::types::transaction::EIP712Domain`]
+///
 /// keccak256(
 ///     "EIP712Domain(uint256 chainId,address verifyingContract)"
 /// );

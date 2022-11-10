@@ -13,7 +13,7 @@ use crate::{
         estimate::{EstimateRequest, EstimateResponse},
         info::{SafeInfoRequest, SafeInfoResponse},
         msig_history::{MsigHistoryRequest, MsigHistoryResponse},
-        propose::SafeTransactionData,
+        propose::{ProposeRequest, SafeTransactionData},
     },
 };
 
@@ -52,10 +52,38 @@ impl From<rpc::common::ErrorResponse> for ClientError {
     }
 }
 
+#[derive(thiserror::Error, Debug)]
+pub enum SigningClientError<S: Signer> {
+    /// ClientError
+    #[error("{0}")]
+    ClientError(ClientError),
+    /// SignerError
+    #[error("{0}")]
+    SignerError(S::Error),
+}
+
+impl<T, S> From<T> for SigningClientError<S>
+where
+    T: Into<ClientError>,
+    S: Signer,
+{
+    fn from(t: T) -> Self {
+        Self::ClientError(t.into())
+    }
+}
+
 /// A Safe Transaction Service client
 pub struct GnosisClient {
     pub(crate) url: reqwest::Url,
     pub(crate) client: reqwest::Client,
+}
+
+impl Deref for GnosisClient {
+    type Target = reqwest::Client;
+
+    fn deref(&self) -> &Self::Target {
+        &self.client
+    }
 }
 
 /// A Safe Transaction Service client with signing and tx submission
@@ -75,6 +103,7 @@ impl<S> Deref for SigningClient<S> {
 
 /// Gnosis Client Results
 pub type ClientResult<T> = Result<T, ClientError>;
+pub type SigningClientResult<T, S> = Result<T, SigningClientError<S>>;
 
 impl GnosisClient {
     /// Instantiate a new client with a specific URL
@@ -175,7 +204,21 @@ impl GnosisClient {
 }
 
 impl<S: Signer> SigningClient<S> {
-    pub async fn propose_tx(&self, tx: &SafeTransactionData) -> ClientResult<()> {
-        todo!()
+    pub async fn propose_tx(
+        &self,
+        tx: &SafeTransactionData,
+        safe_address: Address,
+        chain_id: U256,
+    ) -> SigningClientResult<(), S> {
+        let req = tx
+            .to_request(&self.signer, safe_address, chain_id)
+            .await
+            .map_err(SigningClientError::SignerError)?;
+        let resp = json_post!(
+            self.client,
+            ProposeRequest::url(&self.url, safe_address),
+            &req
+        );
+        resp.map_err(Into::into)
     }
 }
