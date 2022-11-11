@@ -15,8 +15,9 @@ serde_json = "1.0.87"
 thiserror = "1.0.37"
 tokio = { version = "1.0.1", features = ["macros"] }
 tracing = "0.1.37"
+tracing-futures = "0.2.5"
 url = { version = "2.3.1", features = ["serde"] }
 
 [dev-dependencies]
 tokio = { version = "1.0.1", features = ["rt-multi-thread", "macros"] }
-tracing-test = "0.2.3"
+tracing-test = { version = "0.2.3", features = ["no-env-filter"] }

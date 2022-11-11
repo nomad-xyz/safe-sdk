@@ -4,16 +4,17 @@ use ethers::{
     signers::Signer,
     types::{Address, U256},
 };
-use reqwest::IntoUrl;
+use reqwest::{StatusCode, Url};
 
 use crate::{
     json_get, json_post,
+    networks::{self, TxService},
     rpc::{
         self,
         estimate::{EstimateRequest, EstimateResponse},
         info::{SafeInfoRequest, SafeInfoResponse},
         msig_history::{MsigHistoryRequest, MsigHistoryResponse},
-        propose::{ProposeRequest, SafeTransactionData},
+        propose::{MetaTransactionData, ProposeRequest, SafeTransactionData},
     },
 };
 
@@ -38,9 +39,15 @@ pub enum ClientError {
         specified: Address,
         available: Address,
     },
+    /// server status other than 422
+    #[error("Server Error {0}")]
+    ServerErrorCode(StatusCode),
     /// API Error
     #[error("API usage error: {0}")]
     ApiError(rpc::common::ErrorResponse),
+    /// No known service endpoint for chain_id
+    #[error("No known service URL for chain id {0}. Hint: if using a custom tx service api, specify via a `TxService` object, rather than via a chain id.")]
+    UnknownServiceId(u64),
     /// Other Error
     #[error("{0}")]
     Other(String),
@@ -72,14 +79,29 @@ where
     }
 }
 
+/// Gnosis Client Results
+pub type ClientResult<T> = Result<T, ClientError>;
+pub type SigningClientResult<T, S> = Result<T, SigningClientError<S>>;
+
 #[derive(Debug)]
 /// A Safe Transaction Service client
-pub struct GnosisClient {
-    pub(crate) url: reqwest::Url,
+pub struct SafeClient {
+    pub(crate) service: TxService,
     pub(crate) client: reqwest::Client,
+    url_cache: Url,
 }
 
-impl Deref for GnosisClient {
+impl From<TxService> for SafeClient {
+    fn from(network: TxService) -> Self {
+        Self {
+            service: network,
+            client: Default::default(),
+            url_cache: Url::parse(network.url).unwrap(),
+        }
+    }
+}
+
+impl Deref for SafeClient {
     type Target = reqwest::Client;
 
     fn deref(&self) -> &Self::Target {
@@ -87,40 +109,29 @@ impl Deref for GnosisClient {
     }
 }
 
-#[derive(Debug)]
-/// A Safe Transaction Service client with signing and tx submission
-/// capabilities
-pub struct SigningClient<S> {
-    pub(crate) client: GnosisClient,
-    pub(crate) signer: S,
-}
-
-impl<S> Deref for SigningClient<S> {
-    type Target = GnosisClient;
-
-    fn deref(&self) -> &Self::Target {
-        &self.client
+impl SafeClient {
+    pub fn by_chain_id(chain_id: u64) -> Option<Self> {
+        TxService::by_chain_id(chain_id).map(Into::into)
     }
-}
 
-/// Gnosis Client Results
-pub type ClientResult<T> = Result<T, ClientError>;
-pub type SigningClientResult<T, S> = Result<T, SigningClientError<S>>;
+    pub fn ethereum() -> Self {
+        networks::ETHEREUM.into()
+    }
 
-impl GnosisClient {
-    /// Instantiate a new client with a specific URL
-    ///
-    /// # Errors
-    ///
-    /// If the url param cannot be parsed as a URL
-    pub fn new<S>(url: S) -> ClientResult<Self>
-    where
-        S: IntoUrl,
-    {
-        Ok(Self {
-            url: url.into_url()?,
-            client: Default::default(),
-        })
+    pub fn new(network: TxService) -> Self {
+        network.into()
+    }
+
+    pub fn with_client(network: TxService, client: reqwest::Client) -> Self {
+        Self {
+            service: network,
+            client,
+            url_cache: Url::parse(network.url).unwrap(),
+        }
+    }
+    /// network URL
+    pub fn url(&self) -> &Url {
+        &self.url_cache
     }
 
     pub fn with_signer<S: Signer>(self, signer: S) -> SigningClient<S> {
@@ -130,25 +141,11 @@ impl GnosisClient {
         }
     }
 
-    /// Instantiate a new client with a specific URL and a reqwest Client
-    ///
-    /// # Errors
-    ///
-    /// If the url param cannot be parsed as a URL
-    pub fn new_with_client<S>(url: S, client: reqwest::Client) -> ClientResult<Self>
-    where
-        S: IntoUrl,
-    {
-        Ok(Self {
-            url: url.into_url()?,
-            client,
-        })
-    }
-
+    #[tracing::instrument(skip(self))]
     pub async fn safe_info(&self, address: Address) -> ClientResult<SafeInfoResponse> {
         json_get!(
             &self.client,
-            SafeInfoRequest::url(&self.url, address),
+            SafeInfoRequest::url(self.url(), address),
             SafeInfoResponse,
         )
     }
@@ -156,7 +153,7 @@ impl GnosisClient {
     pub async fn msig_history(&self, address: Address) -> ClientResult<MsigHistoryResponse> {
         json_get!(
             &self.client,
-            MsigHistoryRequest::url(&self.url, address),
+            MsigHistoryRequest::url(self.url(), address),
             MsigHistoryResponse
         )
     }
@@ -180,7 +177,7 @@ impl GnosisClient {
     ) -> ClientResult<MsigHistoryResponse> {
         json_get!(
             &self.client,
-            MsigHistoryRequest::url(&self.url, address),
+            MsigHistoryRequest::url(self.url(), address),
             MsigHistoryResponse,
             filters,
         )
@@ -198,36 +195,87 @@ impl GnosisClient {
         let req = tx.into();
         json_post!(
             self.client,
-            EstimateRequest::<'a>::url(&self.url, address),
+            EstimateRequest::<'a>::url(self.url(), address),
             &req
         )
         .map(|resp: EstimateResponse| resp.into())
     }
+
+    pub fn network(&self) -> TxService {
+        self.service
+    }
+}
+
+#[derive(Debug)]
+/// A Safe Transaction Service client with signing and tx submission
+/// capabilities
+pub struct SigningClient<S> {
+    pub(crate) client: SafeClient,
+    pub(crate) signer: S,
+}
+
+impl<S> Deref for SigningClient<S> {
+    type Target = SafeClient;
+
+    fn deref(&self) -> &Self::Target {
+        &self.client
+    }
 }
 
 impl<S: Signer> SigningClient<S> {
+    pub fn try_from_signer(signer: S) -> Result<Self, ClientError> {
+        let chain_id = signer.chain_id();
+        match TxService::by_chain_id(chain_id) {
+            Some(service) => Ok(Self::with_service_and_signer(service, signer)),
+            None => Err(ClientError::UnknownServiceId(chain_id)),
+        }
+    }
+
+    pub fn ethereum(signer: S) -> Self {
+        Self::with_service_and_signer(networks::ETHEREUM, signer)
+    }
+
+    pub fn with_service_and_signer(service: TxService, signer: S) -> Self {
+        let signer = signer.with_chain_id(service.chain_id);
+        SafeClient::from(service).with_signer(signer)
+    }
+
     pub async fn submit_proposal(
         &self,
         proposal: ProposeRequest,
         safe_address: Address,
-    ) -> SigningClientResult<(), S> {
+    ) -> SigningClientResult<serde_json::Value, S> {
         json_post!(
             self.client,
-            ProposeRequest::url(&self.url, safe_address),
+            ProposeRequest::url(self.url(), safe_address),
             &proposal
         )
         .map_err(Into::into)
     }
+
     pub async fn propose_tx(
         &self,
         tx: SafeTransactionData,
         safe_address: Address,
-        chain_id: U256,
-    ) -> SigningClientResult<(), S> {
+    ) -> SigningClientResult<serde_json::Value, S> {
         let proposal = tx
-            .into_request(&self.signer, safe_address, chain_id)
+            .into_request(&self.signer, safe_address, self.signer.chain_id())
             .await
             .map_err(SigningClientError::SignerError)?;
         self.submit_proposal(proposal, safe_address).await
+    }
+
+    pub async fn propose(
+        &self,
+        tx: impl Into<MetaTransactionData>,
+        safe_address: Address,
+    ) -> SigningClientResult<serde_json::Value, S> {
+        let nonce = self.safe_info(safe_address).await?.nonce;
+        let proposal = SafeTransactionData {
+            core: tx.into(),
+            gas: Default::default(),
+            nonce,
+        };
+        self.propose_tx(proposal, safe_address).await
     }
 }

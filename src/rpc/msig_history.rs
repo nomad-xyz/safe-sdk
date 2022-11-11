@@ -4,7 +4,7 @@ use ethers::types::{Address, Bytes, H256, U256};
 use reqwest::Url;
 use serde::Serialize;
 
-use crate::{client::ClientResult, GnosisClient};
+use crate::{client::ClientResult, SafeClient};
 
 use super::common::Operations;
 
@@ -72,10 +72,19 @@ pub struct MsigHistoryRequest<'a> {
     #[serde(flatten)]
     filters: HashMap<&'static str, String>,
     #[serde(skip)]
-    client: &'a GnosisClient,
+    client: &'a SafeClient,
 }
 
 impl<'a> MsigHistoryRequest<'a> {
+    // TODO: `modified` filters
+    // TODO: Execution date & submission date
+
+    // deliberately not supporting LT and GT. redundant
+    const NONCE_KEYS: &'static [&'static str] = &["nonce__gte", "nonce__lte", "nonce"];
+
+    // GT and GTE not supported by API for some reason
+    const VALUE_KEYS: &'static [&'static str] = &["value__gt", "value__lte", "value"];
+
     /// Insert a KV pair into the internal mapping for later URL encoding
     ///
     /// Somewhat more expensive and brittle than required, as it uses
@@ -86,13 +95,16 @@ impl<'a> MsigHistoryRequest<'a> {
     }
 
     pub fn url(root: &Url, address: Address) -> reqwest::Url {
-        let path = format!("v1/safes/{:?}/multisig-transactions/", address);
+        let path = format!(
+            "api/v1/safes/{}/multisig-transactions/",
+            ethers::utils::to_checksum(&address, None)
+        );
         let mut url = root.clone();
         url.set_path(&path);
         url
     }
 
-    pub fn new(client: &'a GnosisClient) -> Self {
+    pub fn new(client: &'a SafeClient) -> Self {
         Self {
             filters: Default::default(),
             client,
@@ -104,15 +116,6 @@ impl<'a> MsigHistoryRequest<'a> {
             .filtered_msig_history(address, &self.filters)
             .await
     }
-
-    // TODO: `modified` filters
-    // TODO: Execution date & submission date
-
-    // deliberately not supporting LT and GT. redundant
-    const NONCE_KEYS: &'static [&'static str] = &["nonce__gte", "nonce__lte", "nonce"];
-
-    // GT and GTE not supported by API for some reason
-    const VALUE_KEYS: &'static [&'static str] = &["value__gt", "value__lte", "value"];
 
     fn clear_nonces(&mut self) {
         Self::NONCE_KEYS.iter().for_each(|k| {

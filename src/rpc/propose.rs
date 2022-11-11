@@ -13,26 +13,50 @@ use reqwest::Url;
 
 use crate::rpc::common::{Operations, DOMAIN_SEPARATOR_TYPEHASH};
 
-use super::{common::SAFE_TX_TYPEHASH, estimate::EstimateRequest};
+use super::{
+    common::{ChecksumAddress, SAFE_TX_TYPEHASH},
+    estimate::EstimateRequest,
+};
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct MetaTransactionData {
-    pub(crate) to: Address,
-    pub(crate) value: U256,
+    pub to: ChecksumAddress,
+    pub value: u64,
     #[serde(serialize_with = "crate::rpc::common::default_empty_bytes")]
-    pub(crate) data: Option<Bytes>,
-    pub(crate) operation: Option<Operations>,
+    pub data: Option<Bytes>,
+    pub operation: Option<Operations>,
 }
 
 impl<'a> From<&'a MetaTransactionData> for EstimateRequest<'a> {
     fn from(val: &'a MetaTransactionData) -> Self {
         EstimateRequest {
-            to: val.to,
-            value: val.value.low_u64(),
+            to: val.to.into(),
+            value: val.value,
             data: val.data.as_ref(),
             operation: val.operation.unwrap_or(Operations::Call),
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct SafeGasConfig {
+    /// Gas to be forwarded to the callee. 0 for all available
+    pub safe_tx_gas: u64,
+    /// Gas cost that is independent of the internal transaction execution,
+    /// (e.g. base transaction fee, signature check, payment of the refund)
+    pub base_gas: u64,
+    /// Maximum gas price that should be used for this transaction. 0 for no
+    /// maximum. For base layer tokens, (e.g. ETH), this is adjusted to be no
+    /// higher than that actual gas price used. For custom refund tokens, it
+    /// may be any amount.
+    pub gas_price: u64,
+    /// Token address (or 0 if ETH) that is used for the reimbursement payment
+    /// to the executor.
+    pub gas_token: ChecksumAddress,
+    /// The address which receives the refund. Defaults to `tx.origin` if empty
+    pub refund_receiver: ChecksumAddress,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
@@ -40,23 +64,10 @@ impl<'a> From<&'a MetaTransactionData> for EstimateRequest<'a> {
 pub struct SafeTransactionData {
     #[serde(flatten)]
     pub core: MetaTransactionData,
-    /// Gas to be forwarded to the callee. 0 for all available
-    pub safe_tx_gas: U256,
-    /// Gas cost that is independent of the internal transaction execution,
-    /// (e.g. base transaction fee, signature check, payment of the refund)
-    pub base_gas: U256,
-    /// Maximum gas price that should be used for this transaction. 0 for no
-    /// maximum. For base layer tokens, (e.g. ETH), this is adjusted to be no
-    /// higher than that actual gas price used. For custom refund tokens, it
-    /// may be any amount.
-    pub gas_price: U256,
-    /// Token address (or 0 if ETH) that is used for the reimbursement payment
-    /// to the executor.
-    pub gas_token: Address,
-    /// The address which receives the refund. Defaults to `tx.origin` if empty
-    pub refund_receiver: Address,
+    #[serde(flatten)]
+    pub gas: SafeGasConfig,
     /// The Safe nonce to use
-    pub nonce: U256,
+    pub nonce: u64,
 }
 
 impl<'a> From<&'a SafeTransactionData> for EstimateRequest<'a> {
@@ -69,7 +80,7 @@ impl<'a> From<&'a SafeTransactionData> for EstimateRequest<'a> {
 #[derive(Clone, Debug)]
 struct SafeEip712<'a> {
     address: Address,
-    chain_id: U256,
+    chain_id: u64,
     tx: &'a SafeTransactionData,
 }
 
@@ -80,7 +91,7 @@ impl<'a> Eip712 for SafeEip712<'a> {
         Ok(EIP712Domain {
             name: None,
             version: None,
-            chain_id: Some(self.chain_id),
+            chain_id: Some(self.chain_id.into()),
             verifying_contract: Some(self.address),
             salt: None,
         })
@@ -124,15 +135,15 @@ impl SafeTransactionData {
     pub fn encode_struct(&self) -> Vec<u8> {
         let tokens = (
             *SAFE_TX_TYPEHASH,
-            self.core.to,
+            *self.core.to,
             self.core.value,
             H256::from(keccak256(&self.core.data.as_deref().unwrap_or(&[]))),
             self.core.operation.unwrap_or(Operations::Call) as u8,
-            self.safe_tx_gas,
-            self.base_gas,
-            self.gas_price,
-            self.gas_token,
-            self.refund_receiver,
+            self.gas.safe_tx_gas,
+            self.gas.base_gas,
+            self.gas.gas_price,
+            *self.gas.gas_token,
+            *self.gas.refund_receiver,
             self.nonce,
         )
             .into_tokens();
@@ -140,7 +151,7 @@ impl SafeTransactionData {
     }
 
     /// Calculate the EIP712 struct hash
-    fn struct_hash(&self, safe_address: Address, chain_id: U256) -> H256 {
+    fn struct_hash(&self, safe_address: Address, chain_id: u64) -> H256 {
         SafeEip712 {
             address: safe_address,
             chain_id,
@@ -156,7 +167,7 @@ impl SafeTransactionData {
         &self,
         signer: &S,
         safe_address: Address,
-        chain_id: U256,
+        chain_id: u64,
     ) -> Result<ProposeSignature, S::Error> {
         let eip712 = SafeEip712 {
             address: safe_address,
@@ -165,7 +176,7 @@ impl SafeTransactionData {
         };
         let signature = signer.sign_typed_data(&eip712).await?;
         Ok(ProposeSignature {
-            sender: signer.address(),
+            sender: signer.address().into(),
             signature,
             origin: None,
         })
@@ -177,7 +188,7 @@ impl SafeTransactionData {
         self,
         signer: &S,
         safe_address: Address,
-        chain_id: U256,
+        chain_id: u64,
     ) -> Result<ProposeRequest, S::Error> {
         let signature = self.sign(signer, safe_address, chain_id).await?;
         let contract_transaction_hash = self.struct_hash(safe_address, chain_id);
@@ -190,12 +201,35 @@ impl SafeTransactionData {
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct ProposeSignature {
-    sender: Address,
+    sender: ChecksumAddress,
+    #[serde(with = "rsv_sig_ser")]
     /// Must be in RSV format
     signature: Signature,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     origin: Option<String>,
+}
+
+mod rsv_sig_ser {
+    use ethers::types::Signature;
+    use serde::{Deserialize, Serialize};
+
+    pub(crate) fn serialize<S>(sig: &Signature, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::ser::Serializer,
+    {
+        sig.to_string().serialize(serializer)
+    }
+
+    pub(crate) fn deserialize<'de, D>(deserializer: D) -> Result<Signature, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        String::deserialize(deserializer)?
+            .parse::<Signature>()
+            .map_err(serde::de::Error::custom)
+    }
 }
 
 impl ProposeSignature {
@@ -205,12 +239,13 @@ impl ProposeSignature {
     }
 
     /// Getter for `sender`
-    pub fn sender(&self) -> Address {
+    pub fn sender(&self) -> ChecksumAddress {
         self.sender
     }
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct ProposeRequest {
     #[serde(flatten)]
     pub(crate) tx: SafeTransactionData,
@@ -220,8 +255,8 @@ pub struct ProposeRequest {
 }
 
 impl ProposeRequest {
-    pub fn url(root: &Url, safe_address: Address) -> Url {
-        let path = format!("v1/safes/{:?}/multisig-transactions/", safe_address);
+    pub fn url(root: &Url, address: impl Into<ChecksumAddress>) -> Url {
+        let path = format!("api/v1/safes/{}/multisig-transactions/", address.into());
         let mut url = root.clone();
         url.set_path(&path);
         url

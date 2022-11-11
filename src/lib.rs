@@ -7,7 +7,10 @@ pub mod rpc;
 /// ethers middleware
 pub mod middleware;
 
-pub use client::{ClientError, GnosisClient};
+/// Network configuration
+pub mod networks;
+
+pub use client::{ClientError, SafeClient};
 
 // currently supported:
 // GET `/v1/safes/{address}`

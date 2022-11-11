@@ -15,7 +15,10 @@ pub struct EstimateRequest<'a> {
 
 impl<'a> EstimateRequest<'a> {
     pub fn url(root: &Url, address: Address) -> reqwest::Url {
-        let path = format!("v1/safes/{:?}/multisig-transactions/estimations/", address);
+        let path = format!(
+            "api/v1/safes/{}/multisig-transactions/estimations/",
+            ethers::utils::to_checksum(&address, None)
+        );
         let mut url = root.clone();
         url.set_path(&path);
         url

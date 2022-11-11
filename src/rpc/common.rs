@@ -1,6 +1,6 @@
-use std::fmt::Display;
+use std::{fmt::Display, str::FromStr};
 
-use ethers::types::{Bytes, H256};
+use ethers::types::{Address, Bytes, H256};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 
@@ -142,5 +142,78 @@ impl serde::Serialize for SafeVersions {
             SafeVersions::V4 => "v4",
         };
         serializer.serialize_str(v)
+    }
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, Default)]
+pub struct ChecksumAddress(pub Address);
+
+impl std::ops::Deref for ChecksumAddress {
+    type Target = Address;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<Address> for ChecksumAddress {
+    fn from(addr: Address) -> Self {
+        Self(addr)
+    }
+}
+
+impl From<ChecksumAddress> for Address {
+    fn from(val: ChecksumAddress) -> Self {
+        val.0
+    }
+}
+
+impl serde::Serialize for ChecksumAddress {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        ethers::utils::to_checksum(self, None).serialize(serializer)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for ChecksumAddress {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        Ok(Address::deserialize(deserializer)?.into())
+    }
+}
+
+impl std::fmt::Debug for ChecksumAddress {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", ethers::utils::to_checksum(self, None))
+    }
+}
+
+impl std::fmt::Display for ChecksumAddress {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", ethers::utils::to_checksum(self, None))
+    }
+}
+
+impl FromStr for ChecksumAddress {
+    type Err = <Address as FromStr>::Err;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        s.parse::<Address>().map(Into::into)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::rpc::info::SafeInfoResponse;
+
+    #[test]
+    fn it_does() {
+        let resp = "{\"address\":\"0x38CD8Fa77ECEB4b1edB856Ed27aac6A6c6Dc88ca\",\"nonce\":0,\"threshold\":2,\"owners\":[\"0xD5F586B9b2abbbb9a9ffF936690A54F9849dbC97\",\"0x425249Cf0F2f91f488E24cF7B1AA3186748f7516\"],\"masterCopy\":\"0x3E5c63644E683549055b9Be8653de26E0B4CD36E\",\"modules\":[],\"fallbackHandler\":\"0xf48f2B2d2a534e402487b3ee7C18c33Aec0Fe5e4\",\"guard\":\"0x0000000000000000000000000000000000000000\",\"version\":\"1.3.0+L2\"}";
+
+        let _: super::ApiResponse<SafeInfoResponse> = serde_json::from_str(resp).unwrap();
     }
 }

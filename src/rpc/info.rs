@@ -1,11 +1,14 @@
-use ethers::types::{Address, U256};
+use ethers::types::Address;
 use reqwest::Url;
 
 pub struct SafeInfoRequest;
 
 impl SafeInfoRequest {
     pub fn url(root: &Url, address: Address) -> reqwest::Url {
-        let path = format!("v1/safes/{:?}/", address);
+        let path = format!(
+            "api/v1/safes/{}/",
+            ethers::utils::to_checksum(&address, None)
+        );
         let mut url = root.clone();
         url.set_path(&path);
         url
@@ -16,7 +19,7 @@ impl SafeInfoRequest {
 #[serde(rename_all = "camelCase")]
 pub struct SafeInfoResponse {
     pub address: Address,
-    pub nonce: U256,
+    pub nonce: u64,
     pub threshold: u32,
     pub owners: Vec<Address>,
     pub master_copy: Address,
