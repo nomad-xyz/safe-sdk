@@ -172,8 +172,6 @@ where
                 Ok(self.client.safe_info(self.safe_address).await?)
             },)?;
 
-        // TODO: user configurable
-        // but tbh the UI just sets these to 0 so........
         let SafeMiddlewareConfig {
             submit_to_service,
             default_operation,
