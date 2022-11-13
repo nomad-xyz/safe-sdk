@@ -1,7 +1,7 @@
 use std::convert::Infallible;
 
 use ethers::{
-    abi::Tokenize,
+    abi::{self, Tokenize},
     signers::Signer,
     types::{
         transaction::eip712::{EIP712Domain, Eip712},
@@ -78,7 +78,7 @@ impl<'a> From<&'a SafeTransactionData> for EstimateRequest<'a> {
 
 // Internal type to support 712 trait impl
 #[derive(Clone, Debug)]
-struct SafeEip712<'a> {
+pub struct SafeEip712<'a> {
     address: Address,
     chain_id: u64,
     tx: &'a SafeTransactionData,
@@ -116,50 +116,54 @@ impl<'a> Eip712 for SafeEip712<'a> {
 
         Ok(keccak256(digest_input))
     }
-}
 
-impl SafeTransactionData {
-    /// Calculate the eip712 domain separator, which commits to the verifier
-    /// address, and the chain_id
-    pub fn domain_separator(&self, safe_address: Address, chain_id: U256) -> H256 {
+    fn domain_separator(&self) -> Result<[u8; 32], Self::Error> {
         let mut encoded = [0u8; 96];
         encoded[..32].copy_from_slice(DOMAIN_SEPARATOR_TYPEHASH.as_fixed_bytes());
-        chain_id.to_big_endian(&mut encoded[32..64]);
-        encoded[64 + 12..].copy_from_slice(safe_address.as_bytes());
-
-        let tokens = (*DOMAIN_SEPARATOR_TYPEHASH, chain_id, safe_address).into_tokens();
-        keccak256(ethers::abi::encode(&tokens)).into()
+        U256::from(self.chain_id).to_big_endian(&mut encoded[32..64]);
+        encoded[64 + 12..].copy_from_slice(self.address.as_bytes());
+        Ok(keccak256(&encoded))
     }
+}
 
-    /// Encode this struct suitable for EIP-712 signing
-    pub fn encode_struct(&self) -> Vec<u8> {
-        let tokens = (
+impl Tokenize for &SafeTransactionData {
+    fn into_tokens(self) -> Vec<ethers::abi::Token> {
+        let data = H256::from(keccak256(&self.core.data.as_deref().unwrap_or(&[])));
+        (
             *SAFE_TX_TYPEHASH,
-            *self.core.to,
+            self.core.to,
             self.core.value,
-            H256::from(keccak256(&self.core.data.as_deref().unwrap_or(&[]))),
-            self.core.operation.unwrap_or(Operations::Call) as u8,
+            data,
+            self.core.operation.unwrap_or(Operations::Call),
             self.gas.safe_tx_gas,
             self.gas.base_gas,
             self.gas.gas_price,
-            *self.gas.gas_token,
-            *self.gas.refund_receiver,
+            self.gas.gas_token,
+            self.gas.refund_receiver,
             self.nonce,
         )
-            .into_tokens();
-        ethers::abi::encode(&tokens)
+            .into_tokens()
     }
+}
 
-    /// Calculate the EIP712 struct hash
-    fn struct_hash(&self, safe_address: Address, chain_id: u64) -> H256 {
+impl SafeTransactionData {
+    pub fn eip712(&self, safe_address: Address, chain_id: u64) -> SafeEip712 {
         SafeEip712 {
             address: safe_address,
             chain_id,
             tx: self,
         }
-        .struct_hash()
-        .unwrap()
-        .into()
+    }
+
+    fn encode_struct(&self) -> Vec<u8> {
+        abi::encode(&self.into_tokens())
+    }
+
+    fn encode_eip712(&self, safe_address: Address, chain_id: u64) -> H256 {
+        self.eip712(safe_address, chain_id)
+            .encode_eip712()
+            .unwrap()
+            .into()
     }
 
     /// Sign the safe transaction hash
@@ -191,7 +195,7 @@ impl SafeTransactionData {
         chain_id: u64,
     ) -> Result<ProposeRequest, S::Error> {
         let signature = self.sign(signer, safe_address, chain_id).await?;
-        let contract_transaction_hash = self.struct_hash(safe_address, chain_id);
+        let contract_transaction_hash = self.encode_eip712(safe_address, chain_id);
         Ok(ProposeRequest {
             tx: self,
             contract_transaction_hash,
@@ -262,14 +266,21 @@ impl ProposeRequest {
         url
     }
 
+    /// Returns the Safe's internal tx hash for this request
+    pub fn contract_transaction_hash(&self) -> H256 {
+        self.contract_transaction_hash
+    }
+    /// Alias for contract_transaction_hash
+    pub fn safe_tx_hash(&self) -> H256 {
+        self.contract_transaction_hash
+    }
+
+    /// Returns the TX details for this request
     pub fn tx(&self) -> &SafeTransactionData {
         &self.tx
     }
 
-    pub fn contract_transaction_hash(&self) -> H256 {
-        self.contract_transaction_hash
-    }
-
+    /// Returns the signature details for this request
     pub fn signature(&self) -> &ProposeSignature {
         &self.signature
     }

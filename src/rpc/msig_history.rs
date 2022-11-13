@@ -6,60 +6,105 @@ use serde::Serialize;
 
 use crate::{client::ClientResult, SafeClient};
 
-use super::common::Operations;
+use super::common::{DecimalU256, Operations};
+
+#[derive(Debug, Clone, Copy, serde::Serialize)]
+pub struct SafeMultiSigTxRequest;
+
+impl SafeMultiSigTxRequest {
+    pub fn url(root: &Url, tx: H256) -> Url {
+        let path = format!("api/v1/multisig-transactions/{:?}/", tx);
+        let mut url = root.clone();
+        url.set_path(&path);
+        url
+    }
+}
 
 #[derive(serde::Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct SafeMultisigConfirmationResponse {
     pub owner: Address,
+    /// Date at which the confirmation was submitted
     pub submission_date: String,
-    pub transaction_hash: H256,
-    pub signature: String,      // is this RSV? VSR?
+    pub transaction_hash: Option<H256>,
+    pub signature: String,      // RSV
     pub signature_type: String, // this should be an enum?
 }
 
 #[derive(serde::Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct SafeMultisigTransactionResponse {
+    /// Address of the safe
     pub safe: Address,
+    /// Target of the transaction
     pub to: Address,
+    /// Native asset value included in the transaction
     #[serde(default)]
-    pub value: U256,
+    pub value: DecimalU256,
+    /// Data payload sent to target by safe
     #[serde(default)]
     pub data: Bytes,
+    /// CALL or DELEGATECALL
     pub operation: Operations,
-    pub gas_token: Option<Address>,
+    /// token used to refund gas, address(0) for native asset
+    pub gas_token: Address,
+    /// Refundable gas that can be used by the safe for sig checking & admin
     pub safe_tx_gas: u64,
     pub base_gas: u64,
-    pub gas_price: U256,
+    pub gas_price: DecimalU256,
+    /// Address to which to issue gas refunds
     pub refund_receiver: Address,
-    pub nonce: u32,
-    pub execution_date: String,
+    /// Tx Nonce
+    pub nonce: u64,
+    /// Execution time, if executed
+    pub execution_date: Option<String>,
+    /// Time tx was submitted to the safe transaction service
     pub submission_date: String,
+    /// Time tx was modified
     pub modified: String,
-    pub block_number: u32,
-    pub transaction_hash: H256,
+    /// Block number of confirmation (none if unconfirmed)
+    #[serde(default)]
+    pub block_number: Option<u32>,
+    /// Transaction hash of confirmation (if any)
+    #[serde(default)]
+    pub transaction_hash: Option<H256>,
+    /// Safe internal tx hash, produced by EIP712
     pub safe_tx_hash: H256,
-    pub executor: Address,
+    /// Address of account that executed this safe tx (if executed)
+    #[serde(default)]
+    pub executor: Option<Address>,
+    /// Execution status. `true` if executed, `false` otherwise
     pub is_executed: bool,
-    pub is_successful: bool,
-    pub eth_gas_price: U256,
-    pub max_fee_per_gas: U256,
-    pub max_priority_fee_per_gas: U256,
-    pub gas_used: u32,
-    pub fee: u64,
-    pub origin: Address, // is this correct?
-    pub data_decoded: String,
-    pub confirmations_required: u32,
-    pub confirmations: SafeMultisigConfirmationResponse,
+    /// Success status. `None` if tx is not executed, else `true` if
+    /// successful, `false` if revert
+    #[serde(default)]
+    pub is_successful: Option<bool>,
+    #[serde(default)]
+    pub eth_gas_price: Option<U256>,
+    #[serde(default)]
+    pub max_fee_per_gas: Option<U256>,
+    #[serde(default)]
+    pub max_priority_fee_per_gas: Option<U256>,
+    #[serde(default)]
+    pub gas_used: Option<u32>,
+    #[serde(default)]
+    pub fee: Option<u64>,
+    #[serde(default)]
+    pub origin: Option<Address>, // is this correct?
+    #[serde(default)]
+    pub data_decoded: Option<String>,
+    #[serde(default)]
+    pub confirmations_required: Option<u32>,
+    /// Confirmations of the transaction by owners
+    pub confirmations: Vec<SafeMultisigConfirmationResponse>,
     pub trusted: bool,
-    pub signatures: String, // is this RSV? VSR?
+    pub signatures: Option<String>, // RSV string
 }
 
 #[derive(serde::Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct MsigHistoryResponse {
-    pub count: u32,
+    pub count: u64,
     #[serde(default)]
     pub next: Option<Url>,
     #[serde(default)]
@@ -203,5 +248,17 @@ impl<'a> MsigHistoryRequest<'a> {
     pub fn offset(mut self, offset: u32) -> Self {
         self.insert("offset", offset);
         self
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::SafeMultisigTransactionResponse;
+
+    #[test]
+    fn it_parses() {
+        let resp = "{\"safe\":\"0x38CD8Fa77ECEB4b1edB856Ed27aac6A6c6Dc88ca\",\"to\":\"0xD5F586B9b2abbbb9a9ffF936690A54F9849dbC97\",\"value\":\"381832418\",\"data\":\"0xdeadbeefdeadbeef\",\"operation\":1,\"gasToken\":\"0x0000000000000000000000000000000000000000\",\"safeTxGas\":0,\"baseGas\":0,\"gasPrice\":\"0\",\"refundReceiver\":\"0x0000000000000000000000000000000000000000\",\"nonce\":0,\"executionDate\":null,\"submissionDate\":\"2022-11-13T18:16:49.292148Z\",\"modified\":\"2022-11-13T18:16:49.325143Z\",\"blockNumber\":null,\"transactionHash\":null,\"safeTxHash\":\"0xa13429644bc3e3871867f1b6f48b092e397b8cc582cdd48504c24a3d445ace9e\",\"executor\":null,\"isExecuted\":false,\"isSuccessful\":null,\"ethGasPrice\":null,\"maxFeePerGas\":null,\"maxPriorityFeePerGas\":null,\"gasUsed\":null,\"fee\":null,\"origin\":null,\"dataDecoded\":null,\"confirmationsRequired\":null,\"confirmations\":[{\"owner\":\"0xD5F586B9b2abbbb9a9ffF936690A54F9849dbC97\",\"submissionDate\":\"2022-11-13T18:16:49.325143Z\",\"transactionHash\":null,\"signature\":\"0x25ca0eaef716dffb7ad380cb428be2413f2db5f5131b6694801383ebabe22a1314ed82db6a4cc9b3d13d0b318e1ef57a8f4d9690b58bc9db1ac4806e7bb8f0191b\",\"signatureType\":\"EOA\"}],\"trusted\":true,\"signatures\":null}";
+
+        serde_json::from_str::<SafeMultisigTransactionResponse>(&resp).unwrap();
     }
 }

@@ -2,7 +2,7 @@ use std::{collections::HashMap, ops::Deref};
 
 use ethers::{
     signers::Signer,
-    types::{Address, U256},
+    types::{Address, H256, U256},
 };
 use reqwest::{StatusCode, Url};
 
@@ -13,7 +13,10 @@ use crate::{
         self,
         estimate::{EstimateRequest, EstimateResponse},
         info::{SafeInfoRequest, SafeInfoResponse},
-        msig_history::{MsigHistoryRequest, MsigHistoryResponse},
+        msig_history::{
+            MsigHistoryRequest, MsigHistoryResponse, SafeMultiSigTxRequest,
+            SafeMultisigTransactionResponse,
+        },
         propose::{MetaTransactionData, ProposeRequest, SafeTransactionData},
     },
 };
@@ -148,6 +151,7 @@ impl SafeClient {
             SafeInfoRequest::url(self.url(), address),
             SafeInfoResponse,
         )
+        .map(Option::unwrap)
     }
 
     pub async fn msig_history(&self, address: Address) -> ClientResult<MsigHistoryResponse> {
@@ -156,18 +160,12 @@ impl SafeClient {
             MsigHistoryRequest::url(self.url(), address),
             MsigHistoryResponse
         )
+        .map(Option::unwrap)
     }
 
     /// Get the highest unused nonce
-    pub async fn next_nonce(&self, address: Address) -> ClientResult<u32> {
-        Ok(self
-            .msig_history(address)
-            .await?
-            .results
-            .iter()
-            .map(|tx| tx.nonce)
-            .max()
-            .unwrap_or(0))
+    pub async fn next_nonce(&self, address: Address) -> ClientResult<u64> {
+        Ok(self.msig_history(address).await?.count)
     }
 
     pub(crate) async fn filtered_msig_history(
@@ -181,6 +179,7 @@ impl SafeClient {
             MsigHistoryResponse,
             filters,
         )
+        .map(Option::unwrap)
     }
 
     pub async fn msig_history_builder(&self) -> MsigHistoryRequest {
@@ -198,11 +197,23 @@ impl SafeClient {
             EstimateRequest::<'a>::url(self.url(), address),
             &req
         )
-        .map(|resp: EstimateResponse| resp.into())
+        .map(|resp: Option<EstimateResponse>| resp.unwrap().into())
     }
 
     pub fn network(&self) -> TxService {
         self.service
+    }
+
+    pub async fn transaction_info(
+        &self,
+        tx_hash: H256,
+    ) -> ClientResult<SafeMultisigTransactionResponse> {
+        json_get!(
+            &self.client,
+            SafeMultiSigTxRequest::url(self.url(), tx_hash),
+            SafeMultisigTransactionResponse
+        )
+        .map(Option::unwrap)
     }
 }
 
@@ -244,20 +255,23 @@ impl<S: Signer> SigningClient<S> {
         &self,
         proposal: ProposeRequest,
         safe_address: Address,
-    ) -> SigningClientResult<serde_json::Value, S> {
+    ) -> SigningClientResult<SafeMultisigTransactionResponse, S> {
+        let tx_hash = proposal.safe_tx_hash();
+        // little crufty. TODO: fix macro more gooder
         json_post!(
             self.client,
             ProposeRequest::url(self.url(), safe_address),
             &proposal
         )
-        .map_err(Into::into)
+        .map(|_: Option<()>| ())?;
+        Ok(self.transaction_info(tx_hash).await?)
     }
 
     pub async fn propose_tx(
         &self,
         tx: SafeTransactionData,
         safe_address: Address,
-    ) -> SigningClientResult<serde_json::Value, S> {
+    ) -> SigningClientResult<SafeMultisigTransactionResponse, S> {
         let proposal = tx
             .into_request(&self.signer, safe_address, self.signer.chain_id())
             .await
@@ -269,8 +283,9 @@ impl<S: Signer> SigningClient<S> {
         &self,
         tx: impl Into<MetaTransactionData>,
         safe_address: Address,
-    ) -> SigningClientResult<serde_json::Value, S> {
-        let nonce = self.safe_info(safe_address).await?.nonce;
+    ) -> SigningClientResult<SafeMultisigTransactionResponse, S> {
+        let nonce = self.next_nonce(safe_address).await?;
+        tracing::info!(nonce);
         let proposal = SafeTransactionData {
             core: tx.into(),
             gas: Default::default(),

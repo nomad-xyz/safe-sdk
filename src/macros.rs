@@ -14,8 +14,9 @@ macro_rules! json_post {
         let resp = $client.post(url.clone()).json($params).send().await?;
         let text = resp.text().await?;
 
-        let result = serde_json::from_str(&text).map_err(Into::<$crate::client::ClientError>::into);
+        let result: $crate::rpc::common::ApiResponse<_> = text.parse()?;
 
+        // json deser fails
         if result.is_err() {
             tracing::warn!(
                 method = "POST",
@@ -25,7 +26,8 @@ macro_rules! json_post {
                 "Unexpected response from server"
             );
         }
-        result
+        result.into_client_result()
+
     }
 }}
 

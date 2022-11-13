@@ -1,6 +1,9 @@
 use std::{fmt::Display, str::FromStr};
 
-use ethers::types::{Address, Bytes, H256};
+use ethers::{
+    abi::{ethereum_types::FromDecStrErr, InvalidOutputType, Token, Tokenizable},
+    types::{Address, Bytes, H256, U256},
+};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 
@@ -63,6 +66,26 @@ pub enum Operations {
     DelegateCall = 1,
 }
 
+impl Tokenizable for Operations {
+    fn from_token(token: ethers::abi::Token) -> Result<Self, ethers::abi::InvalidOutputType>
+    where
+        Self: Sized,
+    {
+        match token {
+            Token::Uint(x) if x.is_zero() => Ok(Operations::Call),
+            Token::Uint(x) if x == U256::from(1) => Ok(Operations::DelegateCall),
+            other => Err(InvalidOutputType(format!("Expected 0 or 1, got {}", other))),
+        }
+    }
+
+    fn into_token(self) -> ethers::abi::Token {
+        match self {
+            Operations::Call => Token::Uint(0.into()),
+            Operations::DelegateCall => Token::Uint(1.into()),
+        }
+    }
+}
+
 impl Serialize for Operations {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -110,14 +133,30 @@ impl Display for ErrorResponse {
 #[serde(untagged)]
 pub enum ApiResponse<T> {
     Error(ErrorResponse),
-    Sucess(T),
+    Success(T),
+    EmptySuccess,
+}
+
+impl<T> FromStr for ApiResponse<T>
+where
+    T: serde::de::DeserializeOwned,
+{
+    type Err = serde_json::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.is_empty() {
+            return Ok(ApiResponse::EmptySuccess);
+        }
+        serde_json::from_str(s)
+    }
 }
 
 impl<T> ApiResponse<T> {
-    pub(crate) fn into_client_result(self) -> ClientResult<T> {
+    pub(crate) fn into_client_result(self) -> ClientResult<Option<T>> {
         match self {
             ApiResponse::Error(e) => Err(e.into()),
-            ApiResponse::Sucess(t) => Ok(t),
+            ApiResponse::Success(t) => Ok(Some(t)),
+            ApiResponse::EmptySuccess => Ok(None),
         }
     }
 
@@ -203,6 +242,70 @@ impl FromStr for ChecksumAddress {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         s.parse::<Address>().map(Into::into)
+    }
+}
+
+impl ethers::abi::Tokenizable for ChecksumAddress {
+    fn from_token(token: ethers::abi::Token) -> Result<Self, ethers::abi::InvalidOutputType>
+    where
+        Self: Sized,
+    {
+        Address::from_token(token).map(Into::into)
+    }
+
+    fn into_token(self) -> ethers::abi::Token {
+        self.0.into_token()
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct DecimalU256(U256);
+
+impl std::ops::Deref for DecimalU256 {
+    type Target = U256;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<U256> for DecimalU256 {
+    fn from(i: U256) -> Self {
+        Self(i)
+    }
+}
+
+impl From<DecimalU256> for U256 {
+    fn from(i: DecimalU256) -> Self {
+        i.0
+    }
+}
+
+impl FromStr for DecimalU256 {
+    type Err = FromDecStrErr;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(U256::from_dec_str(s)?.into())
+    }
+}
+
+impl serde::Serialize for DecimalU256 {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        format!("{}", self.0).serialize(serializer)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for DecimalU256 {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        String::deserialize(deserializer)?
+            .parse()
+            .map_err(serde::de::Error::custom)
     }
 }
 
