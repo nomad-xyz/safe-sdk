@@ -175,10 +175,10 @@ impl<'a> MsigHistoryRequest<'a> {
     }
 
     /// Return the URL to which to dispatch this request
-    pub fn url(root: &Url, address: Address) -> reqwest::Url {
+    pub fn url(root: &Url, safe_address: Address) -> reqwest::Url {
         let path = format!(
             "api/v1/safes/{}/multisig-transactions/",
-            ethers::utils::to_checksum(&address, None)
+            ethers::utils::to_checksum(&safe_address, None)
         );
         let mut url = root.clone();
         url.set_path(&path);

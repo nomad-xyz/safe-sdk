@@ -161,10 +161,10 @@ impl SafeClient {
 
     /// Get information about the Safe from the API
     #[tracing::instrument(skip(self))]
-    pub async fn safe_info(&self, address: Address) -> ClientResult<SafeInfoResponse> {
+    pub async fn safe_info(&self, safe_address: Address) -> ClientResult<SafeInfoResponse> {
         json_get!(
             &self.client,
-            SafeInfoRequest::url(self.url(), address),
+            SafeInfoRequest::url(self.url(), safe_address),
             SafeInfoResponse,
         )
         .map(Option::unwrap)
@@ -172,10 +172,10 @@ impl SafeClient {
 
     /// Get the history of Msig transactions from the API
     #[tracing::instrument(skip(self))]
-    pub async fn msig_history(&self, address: Address) -> ClientResult<MsigHistoryResponse> {
+    pub async fn msig_history(&self, safe_address: Address) -> ClientResult<MsigHistoryResponse> {
         json_get!(
             &self.client,
-            MsigHistoryRequest::url(self.url(), address),
+            MsigHistoryRequest::url(self.url(), safe_address),
             MsigHistoryResponse
         )
         .map(Option::unwrap)
@@ -185,20 +185,20 @@ impl SafeClient {
     ///
     /// TODO: does this break if the reply is paginated?
     #[tracing::instrument(skip(self))]
-    pub async fn next_nonce(&self, address: Address) -> ClientResult<u64> {
-        Ok(self.msig_history(address).await?.count)
+    pub async fn next_nonce(&self, safe_address: Address) -> ClientResult<u64> {
+        Ok(self.msig_history(safe_address).await?.count)
     }
 
     /// Request a filtered history of msig txns for the safe
     #[tracing::instrument(skip(self, filters))]
     pub(crate) async fn filtered_msig_history(
         &self,
-        address: Address,
+        safe_address: Address,
         filters: impl AsRef<HashMap<&'static str, String>>,
     ) -> ClientResult<MsigHistoryResponse> {
         json_get!(
             &self.client,
-            MsigHistoryRequest::url(self.url(), address),
+            MsigHistoryRequest::url(self.url(), safe_address),
             MsigHistoryResponse,
             filters.as_ref(),
         )
@@ -215,13 +215,13 @@ impl SafeClient {
     #[tracing::instrument(skip(self, tx))]
     pub async fn estimate_gas<'a>(
         &self,
-        address: Address,
+        safe_address: Address,
         tx: impl Into<EstimateRequest<'a>>,
     ) -> ClientResult<U256> {
         let req = tx.into();
         json_post!(
             self.client,
-            EstimateRequest::<'a>::url(self.url(), address),
+            EstimateRequest::<'a>::url(self.url(), safe_address),
             &req
         )
         .map(|resp: Option<EstimateResponse>| resp.unwrap().into())

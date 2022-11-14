@@ -88,7 +88,7 @@ impl<'a> From<&'a SafeTransactionData> for EstimateRequest<'a> {
 /// Internal type to support 712 trait impl
 #[derive(Clone, Debug)]
 pub(crate) struct SafeEip712<'a> {
-    address: Address,
+    safe_address: Address,
     chain_id: u64,
     tx: &'a SafeTransactionData,
 }
@@ -101,7 +101,7 @@ impl<'a> Eip712 for SafeEip712<'a> {
             name: None,
             version: None,
             chain_id: Some(self.chain_id.into()),
-            verifying_contract: Some(self.address),
+            verifying_contract: Some(self.safe_address),
             salt: None,
         })
     }
@@ -130,7 +130,7 @@ impl<'a> Eip712 for SafeEip712<'a> {
         let mut encoded = [0u8; 96];
         encoded[..32].copy_from_slice(DOMAIN_SEPARATOR_TYPEHASH.as_fixed_bytes());
         U256::from(self.chain_id).to_big_endian(&mut encoded[32..64]);
-        encoded[64 + 12..].copy_from_slice(self.address.as_bytes());
+        encoded[64 + 12..].copy_from_slice(self.safe_address.as_bytes());
         Ok(keccak256(&encoded))
     }
 }
@@ -158,7 +158,7 @@ impl Tokenize for &SafeTransactionData {
 impl SafeTransactionData {
     pub(crate) fn eip712(&self, safe_address: Address, chain_id: u64) -> SafeEip712<'_> {
         SafeEip712 {
-            address: safe_address,
+            safe_address,
             chain_id,
             tx: self,
         }
@@ -183,7 +183,7 @@ impl SafeTransactionData {
         chain_id: u64,
     ) -> Result<ProposeSignature, S::Error> {
         let eip712 = SafeEip712 {
-            address: safe_address,
+            safe_address,
             chain_id,
             tx: self,
         };
@@ -273,8 +273,11 @@ pub struct ProposeRequest {
 
 impl ProposeRequest {
     /// Return the URL to which to dispatch this request
-    pub fn url(root: &Url, address: impl Into<ChecksumAddress>) -> Url {
-        let path = format!("api/v1/safes/{}/multisig-transactions/", address.into());
+    pub fn url(root: &Url, safe_address: impl Into<ChecksumAddress>) -> Url {
+        let path = format!(
+            "api/v1/safes/{}/multisig-transactions/",
+            safe_address.into()
+        );
         let mut url = root.clone();
         url.set_path(&path);
         url

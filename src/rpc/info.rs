@@ -6,10 +6,10 @@ pub struct SafeInfoRequest;
 
 impl SafeInfoRequest {
     /// Return the URL to which to dispatch this request
-    pub fn url(root: &Url, address: Address) -> reqwest::Url {
+    pub fn url(root: &Url, safe_address: Address) -> reqwest::Url {
         let path = format!(
             "api/v1/safes/{}/",
-            ethers::utils::to_checksum(&address, None)
+            ethers::utils::to_checksum(&safe_address, None)
         );
         let mut url = root.clone();
         url.set_path(&path);
@@ -22,7 +22,8 @@ impl SafeInfoRequest {
 #[serde(rename_all = "camelCase")]
 pub struct SafeInfoResponse {
     /// The Safe's address
-    pub address: Address,
+    #[serde(rename = "address")]
+    pub safe_address: Address,
     /// The current on-chain nonce (not counting any pending txns)
     pub nonce: u64,
     /// The number of required signers
