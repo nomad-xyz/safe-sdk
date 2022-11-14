@@ -14,6 +14,7 @@ pub struct EstimateRequest<'a> {
 }
 
 impl<'a> EstimateRequest<'a> {
+    /// Return the URL to which to dispatch this request
     pub fn url(root: &Url, address: Address) -> reqwest::Url {
         let path = format!(
             "api/v1/safes/{}/multisig-transactions/estimations/",
@@ -25,8 +26,10 @@ impl<'a> EstimateRequest<'a> {
     }
 }
 
+/// Response of the estimate endpoint
 #[derive(Debug, Clone, Copy, serde::Deserialize)]
 pub struct EstimateResponse {
+    /// The amount of gas estimated
     pub safe_tx_gas: U256,
 }
 

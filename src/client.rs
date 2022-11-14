@@ -39,7 +39,9 @@ pub enum ClientError {
     /// Wrong Signer
     #[error("Wrong Signer: Request specified {specified:?}. Client has: {available:?}")]
     WrongSigner {
+        /// Specified signer's address
         specified: Address,
+        /// Address of available signer
         available: Address,
     },
     /// server status other than 422
@@ -62,6 +64,7 @@ impl From<rpc::common::ErrorResponse> for ClientError {
     }
 }
 
+/// Error for SigningClient
 #[derive(thiserror::Error, Debug)]
 pub enum SigningClientError<S: Signer> {
     /// ClientError
@@ -83,8 +86,10 @@ where
 }
 
 /// Gnosis Client Results
-pub type ClientResult<T> = Result<T, ClientError>;
-pub type SigningClientResult<T, S> = Result<T, SigningClientError<S>>;
+pub(crate) type ClientResult<T> = Result<T, ClientError>;
+
+/// Signing Client
+pub(crate) type SigningClientResult<T, S> = Result<T, SigningClientError<S>>;
 
 #[derive(Debug)]
 /// A Safe Transaction Service client
@@ -113,18 +118,22 @@ impl Deref for SafeClient {
 }
 
 impl SafeClient {
+    /// Instantiate a client from a known chain ID by looking up the service URL
     pub fn by_chain_id(chain_id: u64) -> Option<Self> {
         TxService::by_chain_id(chain_id).map(Into::into)
     }
 
+    /// Instantiate a client using the ethereum mainnet service
     pub fn ethereum() -> Self {
         networks::ETHEREUM.into()
     }
 
+    /// Instantiate a client from a Service struct
     pub fn new(network: TxService) -> Self {
         network.into()
     }
 
+    /// Instantiate a client from a Service struct and reqwest client
     pub fn with_client(network: TxService, client: reqwest::Client) -> Self {
         Self {
             service: network,
@@ -132,11 +141,17 @@ impl SafeClient {
             url_cache: Url::parse(network.url).unwrap(),
         }
     }
-    /// network URL
+    /// Return the safe transaction service root URL
     pub fn url(&self) -> &Url {
         &self.url_cache
     }
 
+    /// Return the TxService struct
+    pub fn network(&self) -> TxService {
+        self.service
+    }
+
+    /// Add a signer to the client, to allow proposing transactions
     pub fn with_signer<S: Signer>(self, signer: S) -> SigningClient<S> {
         SigningClient {
             client: self,
@@ -144,6 +159,7 @@ impl SafeClient {
         }
     }
 
+    /// Get information about the Safe from the API
     #[tracing::instrument(skip(self))]
     pub async fn safe_info(&self, address: Address) -> ClientResult<SafeInfoResponse> {
         json_get!(
@@ -154,6 +170,8 @@ impl SafeClient {
         .map(Option::unwrap)
     }
 
+    /// Get the history of Msig transactions from the API
+    #[tracing::instrument(skip(self))]
     pub async fn msig_history(&self, address: Address) -> ClientResult<MsigHistoryResponse> {
         json_get!(
             &self.client,
@@ -163,29 +181,38 @@ impl SafeClient {
         .map(Option::unwrap)
     }
 
-    /// Get the highest unused nonce
+    /// Get the highest unused nonce, by getting the count of all past txns
+    ///
+    /// TODO: does this break if the reply is paginated?
+    #[tracing::instrument(skip(self))]
     pub async fn next_nonce(&self, address: Address) -> ClientResult<u64> {
         Ok(self.msig_history(address).await?.count)
     }
 
+    /// Request a filtered history of msig txns for the safe
+    #[tracing::instrument(skip(self, filters))]
     pub(crate) async fn filtered_msig_history(
         &self,
         address: Address,
-        filters: &HashMap<&'static str, String>,
+        filters: impl AsRef<HashMap<&'static str, String>>,
     ) -> ClientResult<MsigHistoryResponse> {
         json_get!(
             &self.client,
             MsigHistoryRequest::url(self.url(), address),
             MsigHistoryResponse,
-            filters,
+            filters.as_ref(),
         )
         .map(Option::unwrap)
     }
 
-    pub async fn msig_history_builder(&self) -> MsigHistoryRequest {
+    /// Create a filter builder for msig history
+    #[tracing::instrument(skip(self))]
+    pub fn msig_history_builder(&self) -> MsigHistoryRequest<'_> {
         MsigHistoryRequest::new(self)
     }
 
+    /// Estimate the safeTxGas to attach to a transaction proposal
+    #[tracing::instrument(skip(self, tx))]
     pub async fn estimate_gas<'a>(
         &self,
         address: Address,
@@ -200,10 +227,8 @@ impl SafeClient {
         .map(|resp: Option<EstimateResponse>| resp.unwrap().into())
     }
 
-    pub fn network(&self) -> TxService {
-        self.service
-    }
-
+    /// Get the details of a transaction. Errors on unknown transaction
+    #[tracing::instrument(skip(self))]
     pub async fn transaction_info(
         &self,
         tx_hash: H256,
@@ -234,6 +259,8 @@ impl<S> Deref for SigningClient<S> {
 }
 
 impl<S: Signer> SigningClient<S> {
+    /// Instantiate a signing client from a signer, by looking up the chain id
+    /// in known services
     pub fn try_from_signer(signer: S) -> Result<Self, ClientError> {
         let chain_id = signer.chain_id();
         match TxService::by_chain_id(chain_id) {
@@ -242,15 +269,19 @@ impl<S: Signer> SigningClient<S> {
         }
     }
 
+    /// Instantiate a signing client from a signer, on ethereum mainnet
     pub fn ethereum(signer: S) -> Self {
         Self::with_service_and_signer(networks::ETHEREUM, signer)
     }
 
+    /// Instantiate a signing client from a service & signer, overriding the
+    /// signer's chain ID with the service's chain ID
     pub fn with_service_and_signer(service: TxService, signer: S) -> Self {
         let signer = signer.with_chain_id(service.chain_id);
         SafeClient::from(service).with_signer(signer)
     }
 
+    /// Submit a signed proposal request for storage on the API
     pub async fn submit_proposal(
         &self,
         proposal: ProposeRequest,
@@ -267,6 +298,8 @@ impl<S: Signer> SigningClient<S> {
         Ok(self.transaction_info(tx_hash).await?)
     }
 
+    /// Propose a SafeTransaction to the API. First signs the transaction
+    /// request with the signer, then submits
     pub async fn propose_tx(
         &self,
         tx: SafeTransactionData,
@@ -279,13 +312,16 @@ impl<S: Signer> SigningClient<S> {
         self.submit_proposal(proposal, safe_address).await
     }
 
+    /// Propose a transaction to the API. Converts to a Safe Transaction, then
+    /// signs, then submits
+    ///
+    /// TODO: more implementations of `From<X> for MetaTransactionData`
     pub async fn propose(
         &self,
         tx: impl Into<MetaTransactionData>,
         safe_address: Address,
     ) -> SigningClientResult<SafeMultisigTransactionResponse, S> {
         let nonce = self.next_nonce(safe_address).await?;
-        tracing::info!(nonce);
         let proposal = SafeTransactionData {
             core: tx.into(),
             gas: Default::default(),

@@ -80,12 +80,10 @@ macro_rules! json_get {
 // #[cfg(test)]
 // mod test {
 //     use std::str::FromStr;
-
 //     use reqwest::Url;
 //     use tracing_test::traced_test;
-
 //     use crate::ClientError;
-
+//
 //     struct MockClient<'a>(&'a str);
 //     impl<'a> MockClient<'a> {
 //         fn get(self, _: Url) -> Self {
@@ -107,7 +105,7 @@ macro_rules! json_get {
 //             Ok(self.0.to_owned())
 //         }
 //     }
-
+//
 // #[tokio::test]
 // #[traced_test]
 // async fn test_json_get_warn() -> Result<(), ()> {
@@ -115,10 +113,10 @@ macro_rules! json_get {
 //     json_get!(MockClient("hello world"), url.clone(), u64).unwrap_err();
 //     assert!(logs_contain("Unexpected response from server"));
 //     assert!(logs_contain("hello world"));
-
+//
 //     Ok(())
 // }
-
+//
 // #[tokio::test]
 // #[traced_test]
 // async fn test_json_get_ok() -> Result<(), ()> {
@@ -126,10 +124,10 @@ macro_rules! json_get {
 //     let num = json_get!(MockClient("1312"), url.clone(), u64).unwrap();
 //     assert!(num == 1312);
 //     assert!(!logs_contain("Unexpected response from server"));
-
+//
 //     Ok(())
 // }
-
+//
 // #[tokio::test]
 // #[traced_test]
 // async fn test_json_post_warn() -> Result<(), ()> {
@@ -138,10 +136,10 @@ macro_rules! json_get {
 //     assert!(f.is_err());
 //     assert!(logs_contain("Unexpected response from server"));
 //     assert!(logs_contain("hello world"));
-
+//
 //     Ok(())
 // }
-
+//
 // #[tokio::test]
 // #[traced_test]
 // async fn test_json_post_ok() -> Result<(), ()> {
@@ -149,7 +147,7 @@ macro_rules! json_get {
 //     let num: u64 = json_post!(MockClient("1312"), url.clone(), &1312).unwrap();
 //     assert!(num == 1312);
 //     assert!(!logs_contain("Unexpected response from server"));
-
+//
 //     Ok(())
 // }
 // }

@@ -18,13 +18,18 @@ use super::{
     estimate::EstimateRequest,
 };
 
+/// Info about the metatransaction to be dispatched by the Safe
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct MetaTransactionData {
+    /// The target of the tx
     pub to: ChecksumAddress,
+    /// Native asset value to send to the target
     pub value: u64,
+    /// The data payload to send to the target
     #[serde(serialize_with = "crate::rpc::common::default_empty_bytes")]
     pub data: Option<Bytes>,
+    /// CALL or DELEGATECALL (defaults to Call)
     pub operation: Option<Operations>,
 }
 
@@ -39,6 +44,7 @@ impl<'a> From<&'a MetaTransactionData> for EstimateRequest<'a> {
     }
 }
 
+/// Configuration for the safe TX gas refunding system
 #[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct SafeGasConfig {
@@ -59,11 +65,14 @@ pub struct SafeGasConfig {
     pub refund_receiver: ChecksumAddress,
 }
 
+/// A Safe Transaction, suitable for EIP712 signing
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct SafeTransactionData {
+    /// The internal transaction
     #[serde(flatten)]
     pub core: MetaTransactionData,
+    /// The gas refund configuration
     #[serde(flatten)]
     pub gas: SafeGasConfig,
     /// The Safe nonce to use
@@ -76,9 +85,9 @@ impl<'a> From<&'a SafeTransactionData> for EstimateRequest<'a> {
     }
 }
 
-// Internal type to support 712 trait impl
+/// Internal type to support 712 trait impl
 #[derive(Clone, Debug)]
-pub struct SafeEip712<'a> {
+pub(crate) struct SafeEip712<'a> {
     address: Address,
     chain_id: u64,
     tx: &'a SafeTransactionData,
@@ -147,7 +156,7 @@ impl Tokenize for &SafeTransactionData {
 }
 
 impl SafeTransactionData {
-    pub fn eip712(&self, safe_address: Address, chain_id: u64) -> SafeEip712 {
+    pub(crate) fn eip712(&self, safe_address: Address, chain_id: u64) -> SafeEip712<'_> {
         SafeEip712 {
             address: safe_address,
             chain_id,
@@ -204,13 +213,16 @@ impl SafeTransactionData {
     }
 }
 
+/// Signature information for a proposal request
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct ProposeSignature {
+    /// The sender of the proposal request
     sender: ChecksumAddress,
     #[serde(with = "rsv_sig_ser")]
-    /// Must be in RSV format
+    /// Signature of the sender on the request. Must be in RSV format
     signature: Signature,
+    /// TODO: what is this?
     #[serde(default, skip_serializing_if = "Option::is_none")]
     origin: Option<String>,
 }
@@ -248,6 +260,7 @@ impl ProposeSignature {
     }
 }
 
+/// Propose a transaction for storage in the API pending signing by co-signers
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct ProposeRequest {
@@ -259,6 +272,7 @@ pub struct ProposeRequest {
 }
 
 impl ProposeRequest {
+    /// Return the URL to which to dispatch this request
     pub fn url(root: &Url, address: impl Into<ChecksumAddress>) -> Url {
         let path = format!("api/v1/safes/{}/multisig-transactions/", address.into());
         let mut url = root.clone();

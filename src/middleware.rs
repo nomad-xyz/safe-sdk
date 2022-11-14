@@ -17,6 +17,7 @@ use crate::{
     ClientError,
 };
 
+/// Safe Middleware Error type
 #[derive(thiserror::Error, Debug)]
 pub enum SafeMiddlewareError<M, S>
 where
@@ -54,10 +55,15 @@ where
     }
 }
 
+/// Safe Middleware configuration
 #[derive(Debug, Clone, Copy)]
 pub struct SafeMiddlewareConfig {
+    /// True if the middleware should submit to the service, false if it should
+    /// only cache proposals
     pub submit_to_service: bool,
+    /// Operation to use if no operation is specifie
     pub default_operation: Operations,
+    /// Gas refund configuration to use in txns
     pub gas: SafeGasConfig,
 }
 
@@ -71,6 +77,7 @@ impl Default for SafeMiddlewareConfig {
     }
 }
 
+/// Safe middleware
 #[derive(Debug)]
 pub struct SafeMiddleware<M, S> {
     safe_address: Address,
@@ -81,7 +88,10 @@ pub struct SafeMiddleware<M, S> {
 }
 
 impl<M, S> SafeMiddleware<M, S> {
-    pub async fn proposals(&self) -> RwLockReadGuard<Vec<ProposeRequest>> {
+    /// Lock the proposals list and return a reference to it
+    ///
+    /// All tx submissions blocks while the guard is held
+    pub async fn proposals(&self) -> RwLockReadGuard<'_, Vec<ProposeRequest>> {
         self.proposals.read().await
     }
 }

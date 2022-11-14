@@ -60,9 +60,13 @@ where
     }
 }
 
+/// Safe operations
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Operations {
+    /// CALL opcode
     Call = 0,
+    /// DELEGATECALL opcode.
+    /// Note: please exercise caution, as this can brick a SAFE
     DelegateCall = 1,
 }
 
@@ -110,11 +114,15 @@ impl<'de> Deserialize<'de> for Operations {
     }
 }
 
+/// API Error response
 #[derive(serde::Deserialize, Debug, Clone)]
 pub struct ErrorResponse {
+    /// Error code
     pub code: u8,
+    /// Error message
     #[serde(default)]
     pub message: Option<String>,
+    /// Inputs
     #[serde(default)]
     pub arguments: Vec<serde_json::Value>,
 }
@@ -129,11 +137,15 @@ impl Display for ErrorResponse {
     }
 }
 
+/// API Response
 #[derive(serde::Deserialize, Debug, Clone)]
 #[serde(untagged)]
 pub enum ApiResponse<T> {
+    /// Error
     Error(ErrorResponse),
+    /// Success w/ value
     Success(T),
+    /// Empty Success
     EmptySuccess,
 }
 
@@ -160,14 +172,19 @@ impl<T> ApiResponse<T> {
         }
     }
 
+    /// True if the response is an API error
     pub fn is_err(&self) -> bool {
         matches!(self, Self::Error(_))
     }
 }
 
+/// Safe versions
+/// TODO: what do these do?
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum SafeVersions {
+    /// V3
     V3,
+    /// V4
     V4,
 }
 
@@ -184,6 +201,7 @@ impl serde::Serialize for SafeVersions {
     }
 }
 
+/// An address wrapper that ensures checksum encoding
 #[derive(Copy, Clone, PartialEq, Eq, Default)]
 pub struct ChecksumAddress(pub Address);
 
@@ -258,6 +276,7 @@ impl ethers::abi::Tokenizable for ChecksumAddress {
     }
 }
 
+/// A U256 wrapper that ensures decimal string encoding
 #[derive(Debug, Clone, Copy, Default)]
 pub struct DecimalU256(U256);
 
