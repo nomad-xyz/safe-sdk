@@ -22,6 +22,27 @@ impl SafeMultiSigTxRequest {
     }
 }
 
+/// Decoded function call parameter
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct Parameter {
+    /// Parameter name
+    pub name: String,
+    /// Solidity type of parameter
+    #[serde(rename = "type")]
+    pub param_type: String,
+    /// Parameter value
+    pub value: String,
+}
+
+/// Decoded function call
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct DecodedData {
+    /// Method Name
+    pub method: String,
+    /// Call arguments
+    pub parameters: Vec<Parameter>,
+}
+
 /// Confirmation info for a multisig transaction
 #[derive(serde::Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -112,7 +133,7 @@ pub struct SafeMultisigTransactionResponse {
     /// Decoded data (if any)
     /// TODO: what is this?
     #[serde(default)]
-    pub data_decoded: Option<String>,
+    pub data_decoded: Option<DecodedData>,
     /// Confirmations required for the transaction, if any
     #[serde(default)]
     pub confirmations_required: Option<u32>,
@@ -165,6 +186,11 @@ impl<'a> MsigHistoryRequest<'a> {
     // GT and GTE not supported by API for some reason
     const VALUE_KEYS: &'static [&'static str] = &["value__gt", "value__lte", "value"];
 
+    /// Dispatch the request to the API, querying txns from the specified safe
+    pub async fn query(self, safe_address: Address) -> ClientResult<MsigHistoryResponse> {
+        self.client.filtered_msig_history(safe_address, &self).await
+    }
+
     /// Insert a KV pair into the internal mapping for later URL encoding
     ///
     /// Somewhat more expensive and brittle than required, as it uses
@@ -191,11 +217,6 @@ impl<'a> MsigHistoryRequest<'a> {
             filters: Default::default(),
             client,
         }
-    }
-
-    /// Dispatch the request to the API, querying txns from the specified safe
-    pub async fn query(self, safe_address: Address) -> ClientResult<MsigHistoryResponse> {
-        self.client.filtered_msig_history(safe_address, &self).await
     }
 
     fn clear_nonces(&mut self) {

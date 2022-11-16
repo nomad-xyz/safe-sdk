@@ -87,6 +87,14 @@ pub struct SafeMiddleware<M, S> {
     proposals: RwLock<Vec<ProposeRequest>>,
 }
 
+impl<M, S> std::ops::Deref for SafeMiddleware<M, S> {
+    type Target = SigningClient<S>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.client
+    }
+}
+
 impl<M, S> SafeMiddleware<M, S> {
     /// Lock the proposals list and return a reference to it
     ///
