@@ -2,14 +2,14 @@ use ethers::{
     signers::{LocalWallet, Signer},
     types::{Address, H256},
 };
-use gnosis_sdk::{
+use once_cell::sync::Lazy;
+use safe_sdk::{
     client::SigningClient,
     rpc::{
         common::{ChecksumAddress, Operations},
         propose::MetaTransactionData,
     },
 };
-use once_cell::sync::Lazy;
 
 pub const KEY: &str = "1c3a7cdd2270579847aaec11680312cbf4d3c36886232b413ab6529593228ec2";
 pub const ADDRESS: &str = "0xD5F586B9b2abbbb9a9ffF936690A54F9849dbC97";

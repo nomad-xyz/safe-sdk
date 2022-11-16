@@ -10,13 +10,10 @@ use crate::{
     json_get, json_post,
     networks::{self, TxService},
     rpc::{
-        self,
+        common::ErrorResponse,
         estimate::{EstimateRequest, EstimateResponse},
         info::{SafeInfoRequest, SafeInfoResponse},
-        msig_history::{
-            MsigHistoryRequest, MsigHistoryResponse, SafeMultiSigTxRequest,
-            SafeMultisigTransactionResponse,
-        },
+        msig_history::{MsigHistoryFilters, MsigHistoryResponse, MsigTxRequest, MsigTxResponse},
         propose::{MetaTransactionData, ProposeRequest, SafeTransactionData},
     },
 };
@@ -49,7 +46,7 @@ pub enum ClientError {
     ServerErrorCode(StatusCode),
     /// API Error
     #[error("API usage error: {0}")]
-    ApiError(rpc::common::ErrorResponse),
+    ApiError(ErrorResponse),
     /// No known service endpoint for chain_id
     #[error("No known service URL for chain id {0}. Hint: if using a custom tx service api, specify via a `TxService` object, rather than via a chain id.")]
     UnknownServiceId(u64),
@@ -58,8 +55,8 @@ pub enum ClientError {
     Other(String),
 }
 
-impl From<rpc::common::ErrorResponse> for ClientError {
-    fn from(err: rpc::common::ErrorResponse) -> Self {
+impl From<ErrorResponse> for ClientError {
+    fn from(err: ErrorResponse) -> Self {
         Self::ApiError(err)
     }
 }
@@ -175,7 +172,7 @@ impl SafeClient {
     pub async fn msig_history(&self, safe_address: Address) -> ClientResult<MsigHistoryResponse> {
         json_get!(
             &self.client,
-            MsigHistoryRequest::url(self.url(), safe_address),
+            MsigHistoryFilters::url(self.url(), safe_address),
             MsigHistoryResponse
         )
         .map(Option::unwrap)
@@ -198,7 +195,7 @@ impl SafeClient {
     ) -> ClientResult<MsigHistoryResponse> {
         json_get!(
             &self.client,
-            MsigHistoryRequest::url(self.url(), safe_address),
+            MsigHistoryFilters::url(self.url(), safe_address),
             MsigHistoryResponse,
             filters.as_ref(),
         )
@@ -207,8 +204,8 @@ impl SafeClient {
 
     /// Create a filter builder for msig history
     #[tracing::instrument(skip(self))]
-    pub fn msig_history_builder(&self) -> MsigHistoryRequest<'_> {
-        MsigHistoryRequest::new(self)
+    pub fn msig_history_builder(&self) -> MsigHistoryFilters<'_> {
+        MsigHistoryFilters::new(self)
     }
 
     /// Estimate the safeTxGas to attach to a transaction proposal
@@ -229,14 +226,11 @@ impl SafeClient {
 
     /// Get the details of a transaction. Errors on unknown transaction
     #[tracing::instrument(skip(self))]
-    pub async fn transaction_info(
-        &self,
-        tx_hash: H256,
-    ) -> ClientResult<SafeMultisigTransactionResponse> {
+    pub async fn transaction_info(&self, tx_hash: H256) -> ClientResult<MsigTxResponse> {
         json_get!(
             &self.client,
-            SafeMultiSigTxRequest::url(self.url(), tx_hash),
-            SafeMultisigTransactionResponse
+            MsigTxRequest::url(self.url(), tx_hash),
+            MsigTxResponse
         )
         .map(Option::unwrap)
     }
@@ -286,7 +280,7 @@ impl<S: Signer> SigningClient<S> {
         &self,
         proposal: ProposeRequest,
         safe_address: Address,
-    ) -> SigningClientResult<SafeMultisigTransactionResponse, S> {
+    ) -> SigningClientResult<MsigTxResponse, S> {
         let tx_hash = proposal.safe_tx_hash();
         // little crufty. TODO: fix macro more gooder
         json_post!(
@@ -304,7 +298,7 @@ impl<S: Signer> SigningClient<S> {
         &self,
         tx: SafeTransactionData,
         safe_address: Address,
-    ) -> SigningClientResult<SafeMultisigTransactionResponse, S> {
+    ) -> SigningClientResult<MsigTxResponse, S> {
         let proposal = tx
             .into_request(&self.signer, safe_address, self.signer.chain_id())
             .await
@@ -320,7 +314,7 @@ impl<S: Signer> SigningClient<S> {
         &self,
         tx: impl Into<MetaTransactionData>,
         safe_address: Address,
-    ) -> SigningClientResult<SafeMultisigTransactionResponse, S> {
+    ) -> SigningClientResult<MsigTxResponse, S> {
         let nonce = self.next_nonce(safe_address).await?;
         let proposal = SafeTransactionData {
             core: tx.into(),

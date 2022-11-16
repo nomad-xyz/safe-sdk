@@ -1,13 +1,14 @@
-use std::{fmt::Display, str::FromStr};
+use std::{fmt::Display, future::Future, str::FromStr};
 
 use ethers::{
     abi::{ethereum_types::FromDecStrErr, InvalidOutputType, Token, Tokenizable},
     types::{Address, Bytes, H256, U256},
 };
 use once_cell::sync::Lazy;
+use reqwest::Url;
 use serde::{Deserialize, Serialize};
 
-use crate::client::ClientResult;
+use crate::{client::ClientResult, ClientError};
 
 /// EIP-712 Tx Details typehash. Copied from gnosis safe contracts
 ///
@@ -325,6 +326,49 @@ impl<'de> serde::Deserialize<'de> for DecimalU256 {
         String::deserialize(deserializer)?
             .parse()
             .map_err(serde::de::Error::custom)
+    }
+}
+
+/// MsigHistory endpoint response
+#[derive(serde::Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct Paginated<T> {
+    /// Count of txns in the results vec
+    pub count: u64,
+    /// Next URL (for paginated results)
+    #[serde(default)]
+    pub next: Option<Url>,
+    /// Previous URL (for paginated results)
+    #[serde(default)]
+    pub previous: Option<Url>,
+    /// A list of past multisig transactions
+    pub results: Vec<T>,
+}
+
+impl<T> Paginated<T>
+where
+    T: serde::de::DeserializeOwned,
+{
+    /// Returns a future that retrieves the next page of results (if any)
+    pub fn next(&self) -> Option<impl Future<Output = Result<Self, ClientError>>> {
+        let next = self.next.clone()?;
+
+        Some(async move {
+            Ok(serde_json::from_str(
+                &reqwest::get(next).await?.text().await?,
+            )?)
+        })
+    }
+
+    /// Returns a future that retrieves the previous page of results (if any)
+    pub fn previous(&self) -> Option<impl Future<Output = Result<Self, ClientError>>> {
+        let previous = self.previous.clone()?;
+
+        Some(async move {
+            Ok(serde_json::from_str(
+                &reqwest::get(previous).await?.text().await?,
+            )?)
+        })
     }
 }
 

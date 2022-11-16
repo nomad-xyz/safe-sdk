@@ -6,13 +6,16 @@ use serde::Serialize;
 
 use crate::{client::ClientResult, SafeClient};
 
-use super::common::{DecimalU256, Operations};
+use super::common::{DecimalU256, Operations, Paginated};
+
+/// Response for multisig history requests
+pub type MsigHistoryResponse = Paginated<MsigTxResponse>;
 
 /// Safe Multisig history request
 #[derive(Debug, Clone, Copy, serde::Serialize)]
-pub struct SafeMultiSigTxRequest;
+pub struct MsigTxRequest;
 
-impl SafeMultiSigTxRequest {
+impl MsigTxRequest {
     /// The URL to which to dispatch this request
     pub fn url(root: &Url, tx: H256) -> Url {
         let path = format!("api/v1/multisig-transactions/{:?}/", tx);
@@ -46,7 +49,7 @@ pub struct DecodedData {
 /// Confirmation info for a multisig transaction
 #[derive(serde::Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct SafeMultisigConfirmationResponse {
+pub struct MsigConfirmationResponse {
     /// Which owner this confirmation was produced by
     pub owner: Address,
     /// Date at which the confirmation was submitted
@@ -63,7 +66,7 @@ pub struct SafeMultisigConfirmationResponse {
 /// A Multisig History Transaction
 #[derive(serde::Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct SafeMultisigTransactionResponse {
+pub struct MsigTxResponse {
     /// Address of the safe
     pub safe: Address,
     /// Target of the transaction
@@ -138,45 +141,29 @@ pub struct SafeMultisigTransactionResponse {
     #[serde(default)]
     pub confirmations_required: Option<u32>,
     /// Confirmations of the transaction by owners
-    pub confirmations: Vec<SafeMultisigConfirmationResponse>,
+    pub confirmations: Vec<MsigConfirmationResponse>,
     /// TODO: what is this?
     pub trusted: bool,
     /// TODO: what is this?
     pub signatures: Option<String>, // RSV string
 }
 
-/// MsigHistory endpoint response
-#[derive(serde::Deserialize, Clone, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct MsigHistoryResponse {
-    /// Count of txns in the results vec
-    pub count: u64,
-    /// Next URL (for paginated results)
-    #[serde(default)]
-    pub next: Option<Url>,
-    /// Previous URL (for paginated results)
-    #[serde(default)]
-    pub previous: Option<Url>,
-    /// A list of past multisig transactions
-    pub results: Vec<SafeMultisigTransactionResponse>,
-}
-
 /// Msig History Request
 #[derive(serde::Serialize, Clone)]
-pub struct MsigHistoryRequest<'a> {
+pub struct MsigHistoryFilters<'a> {
     #[serde(flatten)]
-    filters: HashMap<&'static str, String>,
+    pub(crate) filters: HashMap<&'static str, String>,
     #[serde(skip)]
-    client: &'a SafeClient,
+    pub(crate) client: &'a SafeClient,
 }
 
-impl<'a> AsRef<HashMap<&'static str, String>> for MsigHistoryRequest<'a> {
+impl<'a> AsRef<HashMap<&'static str, String>> for MsigHistoryFilters<'a> {
     fn as_ref(&self) -> &HashMap<&'static str, String> {
         &self.filters
     }
 }
 
-impl<'a> MsigHistoryRequest<'a> {
+impl<'a> MsigHistoryFilters<'a> {
     // TODO: `modified` filters
     // TODO: Execution date & submission date
 
@@ -334,16 +321,24 @@ impl<'a> MsigHistoryRequest<'a> {
         self.insert("offset", offset);
         self
     }
+
+    /// Converts to a URL with query string
+    pub fn to_url(self, safe_address: Address) -> Url {
+        let mut url = self.client.url().clone();
+        url = Self::url(&url, safe_address);
+        url.query_pairs_mut().extend_pairs(self.filters.iter());
+        url
+    }
 }
 
 #[cfg(test)]
 mod test {
-    use super::SafeMultisigTransactionResponse;
+    use super::MsigTxResponse;
 
     #[test]
     fn it_parses() {
         let resp = "{\"safe\":\"0x38CD8Fa77ECEB4b1edB856Ed27aac6A6c6Dc88ca\",\"to\":\"0xD5F586B9b2abbbb9a9ffF936690A54F9849dbC97\",\"value\":\"381832418\",\"data\":\"0xdeadbeefdeadbeef\",\"operation\":1,\"gasToken\":\"0x0000000000000000000000000000000000000000\",\"safeTxGas\":0,\"baseGas\":0,\"gasPrice\":\"0\",\"refundReceiver\":\"0x0000000000000000000000000000000000000000\",\"nonce\":0,\"executionDate\":null,\"submissionDate\":\"2022-11-13T18:16:49.292148Z\",\"modified\":\"2022-11-13T18:16:49.325143Z\",\"blockNumber\":null,\"transactionHash\":null,\"safeTxHash\":\"0xa13429644bc3e3871867f1b6f48b092e397b8cc582cdd48504c24a3d445ace9e\",\"executor\":null,\"isExecuted\":false,\"isSuccessful\":null,\"ethGasPrice\":null,\"maxFeePerGas\":null,\"maxPriorityFeePerGas\":null,\"gasUsed\":null,\"fee\":null,\"origin\":null,\"dataDecoded\":null,\"confirmationsRequired\":null,\"confirmations\":[{\"owner\":\"0xD5F586B9b2abbbb9a9ffF936690A54F9849dbC97\",\"submissionDate\":\"2022-11-13T18:16:49.325143Z\",\"transactionHash\":null,\"signature\":\"0x25ca0eaef716dffb7ad380cb428be2413f2db5f5131b6694801383ebabe22a1314ed82db6a4cc9b3d13d0b318e1ef57a8f4d9690b58bc9db1ac4806e7bb8f0191b\",\"signatureType\":\"EOA\"}],\"trusted\":true,\"signatures\":null}";
 
-        serde_json::from_str::<SafeMultisigTransactionResponse>(resp).unwrap();
+        serde_json::from_str::<MsigTxResponse>(resp).unwrap();
     }
 }
