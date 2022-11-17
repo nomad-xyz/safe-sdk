@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
-use ethers::types::{Address, Bytes, H256, U256};
+use async_stream::stream;
+use ethers::types::{Address, Bytes, H256};
 use reqwest::Url;
 use serde::Serialize;
 
@@ -27,18 +28,22 @@ impl MsigTxRequest {
 
 /// Decoded function call parameter
 #[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Parameter {
     /// Parameter name
     pub name: String,
     /// Solidity type of parameter
     #[serde(rename = "type")]
     pub param_type: String,
-    /// Parameter value
-    pub value: String,
+    // TODO
+    // /// Parameter value
+    // pub value: String,
+    // pub value_decoded: Vec<String>
 }
 
 /// Decoded function call
 #[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DecodedData {
     /// Method Name
     pub method: String,
@@ -76,7 +81,7 @@ pub struct MsigTxResponse {
     pub value: DecimalU256,
     /// Data payload sent to target by safe
     #[serde(default)]
-    pub data: Bytes,
+    pub data: Option<Bytes>,
     /// CALL or DELEGATECALL
     pub operation: Operations,
     /// token used to refund gas, address(0) for native asset
@@ -116,23 +121,23 @@ pub struct MsigTxResponse {
     pub is_successful: Option<bool>,
     /// ETH gas price in the executing transaction. None if unexecuted
     #[serde(default)]
-    pub eth_gas_price: Option<U256>,
+    pub eth_gas_price: Option<DecimalU256>,
     /// Max fee per gas in the executing transaction. None if unexecuted
     #[serde(default)]
-    pub max_fee_per_gas: Option<U256>,
+    pub max_fee_per_gas: Option<DecimalU256>,
     /// Max priority fee per gas in the executing transaction. None if
     /// unexecuted
     #[serde(default)]
-    pub max_priority_fee_per_gas: Option<U256>,
+    pub max_priority_fee_per_gas: Option<DecimalU256>,
     /// Gas used in the executing transaction. None if unexecuted
     #[serde(default)]
     pub gas_used: Option<u32>,
     /// Fee used in the executing transaction. None if unexecuted
     #[serde(default)]
-    pub fee: Option<u64>,
+    pub fee: Option<DecimalU256>,
     /// TODO: what is this?
     #[serde(default)]
-    pub origin: Option<Address>, // is this correct?
+    pub origin: Option<String>, // is this correct?
     /// Decoded data (if any)
     /// TODO: what is this?
     #[serde(default)]
@@ -145,7 +150,7 @@ pub struct MsigTxResponse {
     /// TODO: what is this?
     pub trusted: bool,
     /// TODO: what is this?
-    pub signatures: Option<String>, // RSV string
+    pub signatures: Option<String>, // RSV strings, tightly packed
 }
 
 /// Msig History Request
@@ -281,16 +286,16 @@ impl<'a> MsigHistoryFilters<'a> {
     /// Filter by execution status
     ///
     /// TODO: what are the acceptable values here? Should this be an enum?
-    pub fn executed(mut self, executed: &str) -> Self {
-        self.insert("executed", executed.to_owned());
+    pub fn executed(mut self, executed: bool) -> Self {
+        self.insert("executed", executed.to_string());
         self
     }
 
     /// Filter by trusted status
     ///
     /// TODO: what are the acceptable values here? Should this be an enum?
-    pub fn trusted(mut self, trusted: &str) -> Self {
-        self.insert("trusted", trusted.to_owned());
+    pub fn trusted(mut self, trusted: bool) -> Self {
+        self.insert("trusted", trusted.to_string());
         self
     }
 
@@ -329,16 +334,69 @@ impl<'a> MsigHistoryFilters<'a> {
         url.query_pairs_mut().extend_pairs(self.filters.iter());
         url
     }
+
+    /// Convert to a stream of msig history entries, traversing pages if
+    /// necessary
+    pub fn into_stream(
+        self,
+        safe_address: Address,
+    ) -> impl tokio_stream::Stream<Item = ClientResult<MsigTxResponse>> + 'a {
+        stream! {
+            tracing::debug!(
+                safe_address = ?safe_address,
+                "streaming msig history",
+            );
+            let Paginated::<MsigTxResponse> {
+                mut next,
+                results,
+                ..
+            } = self.query(safe_address).await?;
+
+            for result in results.into_iter() {
+                yield Ok(result)
+            }
+            while let Some(url) = next.take() {
+                tracing::debug!(
+                    safe_address = ?safe_address,
+                    url = %url,
+                    "successive page of msig history",
+                );
+                // Todo: fix to API response
+                let Paginated::<MsigTxResponse> {
+                    next: n, // avoid shadowing
+                    results, // don't care if shadowing
+                    ..
+                } = serde_json::from_str(&reqwest::get(url).await?.text().await?)?;
+
+                for result in results.into_iter() {
+                    yield Ok(result)
+                }
+                next = n;
+            }
+        }
+    }
 }
 
 #[cfg(test)]
 mod test {
+
     use super::MsigTxResponse;
 
     #[test]
     fn it_parses() {
-        let resp = "{\"safe\":\"0x38CD8Fa77ECEB4b1edB856Ed27aac6A6c6Dc88ca\",\"to\":\"0xD5F586B9b2abbbb9a9ffF936690A54F9849dbC97\",\"value\":\"381832418\",\"data\":\"0xdeadbeefdeadbeef\",\"operation\":1,\"gasToken\":\"0x0000000000000000000000000000000000000000\",\"safeTxGas\":0,\"baseGas\":0,\"gasPrice\":\"0\",\"refundReceiver\":\"0x0000000000000000000000000000000000000000\",\"nonce\":0,\"executionDate\":null,\"submissionDate\":\"2022-11-13T18:16:49.292148Z\",\"modified\":\"2022-11-13T18:16:49.325143Z\",\"blockNumber\":null,\"transactionHash\":null,\"safeTxHash\":\"0xa13429644bc3e3871867f1b6f48b092e397b8cc582cdd48504c24a3d445ace9e\",\"executor\":null,\"isExecuted\":false,\"isSuccessful\":null,\"ethGasPrice\":null,\"maxFeePerGas\":null,\"maxPriorityFeePerGas\":null,\"gasUsed\":null,\"fee\":null,\"origin\":null,\"dataDecoded\":null,\"confirmationsRequired\":null,\"confirmations\":[{\"owner\":\"0xD5F586B9b2abbbb9a9ffF936690A54F9849dbC97\",\"submissionDate\":\"2022-11-13T18:16:49.325143Z\",\"transactionHash\":null,\"signature\":\"0x25ca0eaef716dffb7ad380cb428be2413f2db5f5131b6694801383ebabe22a1314ed82db6a4cc9b3d13d0b318e1ef57a8f4d9690b58bc9db1ac4806e7bb8f0191b\",\"signatureType\":\"EOA\"}],\"trusted\":true,\"signatures\":null}";
+        #[derive(serde::Deserialize)]
+        struct Shape {
+            results: Vec<serde_json::Value>,
+        }
 
-        serde_json::from_str::<MsigTxResponse>(resp).unwrap();
+        let f = std::fs::read_to_string("/Users/james/devel/safe/safe-sdk/tmp.json").unwrap();
+
+        let s: Shape = serde_json::from_str(&f).unwrap();
+        for (i, result) in s.results.into_iter().enumerate() {
+            if let Err(e) = serde_json::from_value::<MsigTxResponse>(result) {
+                dbg!(e);
+                dbg!(i);
+            }
+        }
     }
 }
