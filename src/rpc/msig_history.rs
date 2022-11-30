@@ -1,13 +1,13 @@
 use std::collections::HashMap;
 
 use async_stream::stream;
-use ethers::types::{Address, Bytes, H256};
+use ethers::types::{Address, Bytes, H256, U256};
 use reqwest::Url;
 use serde::Serialize;
 
 use crate::{client::ClientResult, SafeClient};
 
-use super::common::{DecimalU256, Operations, Paginated};
+use super::common::{Operations, Paginated};
 
 /// Response for multisig history requests
 pub type MsigHistoryResponse = Paginated<MsigTxResponse>;
@@ -77,8 +77,8 @@ pub struct MsigTxResponse {
     /// Target of the transaction
     pub to: Address,
     /// Native asset value included in the transaction
-    #[serde(default)]
-    pub value: DecimalU256,
+    #[serde(default, with = "crate::rpc::common::dec_u256_ser")]
+    pub value: U256,
     /// Data payload sent to target by safe
     #[serde(default)]
     pub data: Option<Bytes>,
@@ -91,7 +91,8 @@ pub struct MsigTxResponse {
     /// TODO: What is this?
     pub base_gas: u64,
     /// The gas price at which to refund the executor (0 if no refund)
-    pub gas_price: DecimalU256,
+    #[serde(with = "crate::rpc::common::dec_u256_ser")]
+    pub gas_price: U256,
     /// Address to which to issue gas refunds
     pub refund_receiver: Address,
     /// Tx Nonce
@@ -120,21 +121,21 @@ pub struct MsigTxResponse {
     #[serde(default)]
     pub is_successful: Option<bool>,
     /// ETH gas price in the executing transaction. None if unexecuted
-    #[serde(default)]
-    pub eth_gas_price: Option<DecimalU256>,
+    #[serde(default, with = "crate::rpc::common::dec_u256_opt_ser")]
+    pub eth_gas_price: Option<U256>,
     /// Max fee per gas in the executing transaction. None if unexecuted
-    #[serde(default)]
-    pub max_fee_per_gas: Option<DecimalU256>,
+    #[serde(default, with = "crate::rpc::common::dec_u256_opt_ser")]
+    pub max_fee_per_gas: Option<U256>,
     /// Max priority fee per gas in the executing transaction. None if
     /// unexecuted
-    #[serde(default)]
-    pub max_priority_fee_per_gas: Option<DecimalU256>,
+    #[serde(default, with = "crate::rpc::common::dec_u256_opt_ser")]
+    pub max_priority_fee_per_gas: Option<U256>,
     /// Gas used in the executing transaction. None if unexecuted
     #[serde(default)]
     pub gas_used: Option<u32>,
     /// Fee used in the executing transaction. None if unexecuted
-    #[serde(default)]
-    pub fee: Option<DecimalU256>,
+    #[serde(default, with = "crate::rpc::common::dec_u256_opt_ser")]
+    pub fee: Option<U256>,
     /// TODO: what is this?
     #[serde(default)]
     pub origin: Option<String>, // is this correct?

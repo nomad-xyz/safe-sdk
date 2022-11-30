@@ -78,4 +78,5 @@ let tx =
 - Better integration with ethers
   - More implementations of `From<X> for MetaTransactionData`
 - Some properties are stringly typed, and should be turned into enums
-- Refine the API Response type
+  (but again we don't know what they do lol)
+- Refine the API Response type, and the get/post macros to suck less

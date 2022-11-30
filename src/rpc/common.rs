@@ -281,6 +281,12 @@ impl ethers::abi::Tokenizable for ChecksumAddress {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct DecimalU256(U256);
 
+impl Display for DecimalU256 {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", &self.0)
+    }
+}
+
 impl std::ops::Deref for DecimalU256 {
     type Target = U256;
 
@@ -326,6 +332,44 @@ impl<'de> serde::Deserialize<'de> for DecimalU256 {
         String::deserialize(deserializer)?
             .parse()
             .map_err(serde::de::Error::custom)
+    }
+}
+
+pub(crate) mod dec_u256_ser {
+    use super::*;
+
+    #[allow(dead_code)]
+    pub(crate) fn serialize<S>(u: &U256, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        format!("{}", DecimalU256::from(*u)).serialize(serializer)
+    }
+
+    pub(crate) fn deserialize<'de, D>(deserializer: D) -> Result<U256, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        DecimalU256::deserialize(deserializer).map(Into::into)
+    }
+}
+
+pub(crate) mod dec_u256_opt_ser {
+    use super::*;
+
+    #[allow(dead_code)]
+    pub(crate) fn serialize<S>(u: &Option<U256>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        u.map(Into::<DecimalU256>::into).serialize(serializer)
+    }
+
+    pub(crate) fn deserialize<'de, D>(deserializer: D) -> Result<Option<U256>, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        Ok(Option::<DecimalU256>::deserialize(deserializer)?.map(Into::into))
     }
 }
 
