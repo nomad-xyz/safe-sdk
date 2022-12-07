@@ -94,6 +94,7 @@ pub struct MsigTxResponse {
     #[serde(with = "crate::rpc::common::dec_u256_ser")]
     pub gas_price: U256,
     /// Address to which to issue gas refunds
+    #[serde(deserialize_with = "crate::rpc::common::deser_addr_permit_null")]
     pub refund_receiver: Address,
     /// Tx Nonce
     pub nonce: u64,

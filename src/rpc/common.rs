@@ -416,6 +416,14 @@ where
     }
 }
 
+/// Deser an address, permit null
+pub fn deser_addr_permit_null<'de, D>(deserializer: D) -> Result<Address, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Option::<Address>::deserialize(deserializer).map(Option::unwrap_or_default)
+}
+
 #[cfg(test)]
 mod test {
     use crate::rpc::info::SafeInfoResponse;
