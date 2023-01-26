@@ -131,13 +131,13 @@ impl<'a> Eip712 for SafeEip712<'a> {
         encoded[..32].copy_from_slice(DOMAIN_SEPARATOR_TYPEHASH.as_fixed_bytes());
         U256::from(self.chain_id).to_big_endian(&mut encoded[32..64]);
         encoded[64 + 12..].copy_from_slice(self.safe_address.as_bytes());
-        Ok(keccak256(&encoded))
+        Ok(keccak256(encoded))
     }
 }
 
 impl Tokenize for &SafeTransactionData {
     fn into_tokens(self) -> Vec<ethers::abi::Token> {
-        let data = H256::from(keccak256(&self.core.data.as_deref().unwrap_or(&[])));
+        let data = H256::from(keccak256(self.core.data.as_deref().unwrap_or(&[])));
         (
             *SAFE_TX_TYPEHASH,
             self.core.to,

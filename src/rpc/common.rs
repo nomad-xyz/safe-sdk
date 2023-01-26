@@ -79,7 +79,7 @@ impl Tokenizable for Operations {
         match token {
             Token::Uint(x) if x.is_zero() => Ok(Operations::Call),
             Token::Uint(x) if x == U256::from(1) => Ok(Operations::DelegateCall),
-            other => Err(InvalidOutputType(format!("Expected 0 or 1, got {}", other))),
+            other => Err(InvalidOutputType(format!("Expected 0 or 1, got {other}"))),
         }
     }
 

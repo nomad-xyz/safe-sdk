@@ -19,7 +19,7 @@ pub struct MsigTxRequest;
 impl MsigTxRequest {
     /// The URL to which to dispatch this request
     pub fn url(root: &Url, tx: H256) -> Url {
-        let path = format!("api/v1/multisig-transactions/{:?}/", tx);
+        let path = format!("api/v1/multisig-transactions/{tx:?}/");
         let mut url = root.clone();
         url.set_path(&path);
         url
