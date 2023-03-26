@@ -133,7 +133,7 @@ impl<'a> TokenInfoFilters<'a> {
     }
 }
 
-/// token info response
+/// Token info response
 #[derive(Debug, Clone, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TokenResponse {
@@ -150,8 +150,6 @@ pub struct TokenResponse {
     /// The number of decimals of the token
     pub decimals: Option<u32>,
     /// The Logo URI of the token, if it exists
-    #[serde(rename(deserialize = "logoUri"))]
-    // #[serde(skip)]
     pub logo_uri: String,
 }
 
