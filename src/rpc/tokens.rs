@@ -164,7 +164,7 @@ impl From<String> for TokenType {
 /// token info response
 #[derive(Debug, Clone, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct TokenIfResponse {
+pub struct TokenResponse {
     /// The token type (ERC20, ERC721, etc)
     #[serde(rename(deserialize = "type"))]
     // #[serde(skip)]
@@ -184,4 +184,4 @@ pub struct TokenIfResponse {
 }
 
 /// Response for Token Info requests
-pub type TokenInfoResponse = Paginated<TokenIfResponse>;
+pub type TokenInfoResponse = Paginated<TokenResponse>;
