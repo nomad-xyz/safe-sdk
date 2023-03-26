@@ -385,6 +385,7 @@ mod test {
     use super::MsigTxResponse;
 
     #[test]
+    #[ignore] // TODO: move these integration test files to the repo
     fn it_parses() {
         #[derive(serde::Deserialize)]
         struct Shape {
