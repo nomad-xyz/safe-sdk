@@ -185,27 +185,3 @@ pub struct TokenIfResponse {
 
 /// Response for Token Info requests
 pub type TokenInfoResponse = Paginated<TokenIfResponse>;
-
-#[cfg(test)]
-mod test {
-
-    use super::TokenIfResponse;
-
-    #[test]
-    fn it_parses() {
-        #[derive(serde::Deserialize)]
-        struct Shape {
-            results: Vec<serde_json::Value>,
-        }
-
-        let f = std::fs::read_to_string("/Users/eop/dev/nomad/safe-sdk/tmp.json").unwrap();
-
-        let s: Shape = serde_json::from_str(&f).unwrap();
-        for (i, result) in s.results.into_iter().enumerate() {
-            if let Err(e) = serde_json::from_value::<TokenIfResponse>(result) {
-                dbg!(e);
-                dbg!(i);
-            }
-        }
-    }
-}
