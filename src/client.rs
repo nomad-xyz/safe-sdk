@@ -183,13 +183,13 @@ impl SafeClient {
     #[tracing::instrument(skip(self, filters))]
     pub async fn filtered_tokens(
         &self,
-        filters: impl AsRef<HashMap<&'static str, String>>,
+        filters: impl IntoIterator<Item = (&'static str, String)>,
     ) -> ClientResult<TokenInfoResponse> {
         json_get!(
             &self.client,
             TokenInfoRequest::url(self.url()),
             TokenInfoResponse,
-            filters.as_ref()
+            filters,
         )
         .map(Option::unwrap)
     }

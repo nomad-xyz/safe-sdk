@@ -30,18 +30,12 @@ pub struct TokenInfoFilters<'a> {
     pub(crate) client: &'a SafeClient,
 }
 
-impl<'a> AsRef<HashMap<&'static str, String>> for TokenInfoFilters<'a> {
-    fn as_ref(&self) -> &HashMap<&'static str, String> {
-        &self.filters
-    }
-}
-
 impl<'a> TokenInfoFilters<'a> {
     const DECIMAL_KEYS: &'static [&'static str] = &["decimals__lt", "decimals__gt", "decimals"];
 
     /// Dispatch the request to the API, querying tokens from the API
     pub async fn query(self) -> ClientResult<TokenInfoResponse> {
-        self.client.filtered_tokens(&self).await
+        self.client.filtered_tokens(self.filters).await
     }
 
     /// Insert a KV pair into the internal mapping for later URL encoding
@@ -139,28 +133,6 @@ impl<'a> TokenInfoFilters<'a> {
     }
 }
 
-/// The type of the token (ERC20, ERC721, etc)
-#[derive(Debug, Eq, PartialEq, Clone, serde::Deserialize)]
-pub enum TokenType {
-    /// ERC20 type
-    ERC20,
-    /// ERC721 type
-    ERC721,
-    /// ERC1155 type
-    ERC1155,
-}
-
-impl From<String> for TokenType {
-    fn from(s: String) -> Self {
-        match s.as_str() {
-            "ERC20" => TokenType::ERC20,
-            "ERC721" => TokenType::ERC721,
-            "ERC1155" => TokenType::ERC1155,
-            _ => panic!("Unknown token type"),
-        }
-    }
-}
-
 /// token info response
 #[derive(Debug, Clone, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -168,7 +140,7 @@ pub struct TokenResponse {
     /// The token type (ERC20, ERC721, etc)
     #[serde(rename(deserialize = "type"))]
     // #[serde(skip)]
-    pub token_type: TokenType,
+    pub token_type: String,
     /// The address of the token
     pub address: String,
     /// The name of the token
