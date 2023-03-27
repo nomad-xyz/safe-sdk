@@ -15,6 +15,7 @@ use crate::{
         info::{SafeInfoRequest, SafeInfoResponse},
         msig_history::{MsigHistoryFilters, MsigHistoryResponse, MsigTxRequest, MsigTxResponse},
         propose::{MetaTransactionData, ProposeRequest, SafeTransactionData},
+        tokens::{TokenInfoFilters, TokenInfoRequest, TokenInfoResponse},
     },
 };
 
@@ -165,6 +166,38 @@ impl SafeClient {
             SafeInfoResponse,
         )
         .map(Option::unwrap)
+    }
+
+    /// Get information about tokens available on the API
+    #[tracing::instrument(skip(self))]
+    pub async fn tokens(&self) -> ClientResult<TokenInfoResponse> {
+        json_get!(
+            &self.client,
+            TokenInfoRequest::url(self.url()),
+            TokenInfoResponse,
+        )
+        .map(Option::unwrap)
+    }
+
+    /// Get fitered information about tokens available on the API
+    #[tracing::instrument(skip(self, filters))]
+    pub async fn filtered_tokens(
+        &self,
+        filters: impl IntoIterator<Item = (&'static str, String)>,
+    ) -> ClientResult<TokenInfoResponse> {
+        json_get!(
+            &self.client,
+            TokenInfoRequest::url(self.url()),
+            TokenInfoResponse,
+            filters,
+        )
+        .map(Option::unwrap)
+    }
+
+    /// Create a filter builder for tokens
+    #[tracing::instrument(skip(self))]
+    pub fn tokens_builder(&self) -> TokenInfoFilters<'_> {
+        TokenInfoFilters::new(self)
     }
 
     /// Get the history of Msig transactions from the API

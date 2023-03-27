@@ -4,6 +4,9 @@ pub mod common;
 /// General Safe Info
 pub mod info;
 
+/// Token Info
+pub mod tokens;
+
 /// History of Safe msig transactions
 pub mod msig_history;
 
