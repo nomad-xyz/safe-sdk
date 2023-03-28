@@ -164,12 +164,6 @@ pub struct MsigHistoryFilters<'a> {
     pub(crate) client: &'a SafeClient,
 }
 
-impl<'a> AsRef<HashMap<&'static str, String>> for MsigHistoryFilters<'a> {
-    fn as_ref(&self) -> &HashMap<&'static str, String> {
-        &self.filters
-    }
-}
-
 impl<'a> MsigHistoryFilters<'a> {
     // TODO: `modified` filters
     // TODO: Execution date & submission date
@@ -182,7 +176,9 @@ impl<'a> MsigHistoryFilters<'a> {
 
     /// Dispatch the request to the API, querying txns from the specified safe
     pub async fn query(self, safe_address: Address) -> ClientResult<MsigHistoryResponse> {
-        self.client.filtered_msig_history(safe_address, &self).await
+        self.client
+            .filtered_msig_history(safe_address, self.filters)
+            .await
     }
 
     /// Insert a KV pair into the internal mapping for later URL encoding
