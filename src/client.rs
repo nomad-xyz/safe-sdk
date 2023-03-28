@@ -1,4 +1,4 @@
-use std::{collections::HashMap, ops::Deref};
+use std::ops::Deref;
 
 use ethers::{
     signers::Signer,
@@ -224,13 +224,13 @@ impl SafeClient {
     pub(crate) async fn filtered_msig_history(
         &self,
         safe_address: Address,
-        filters: impl AsRef<HashMap<&'static str, String>>,
+        filters: impl IntoIterator<Item = (&'static str, String)>,
     ) -> ClientResult<MsigHistoryResponse> {
         json_get!(
             &self.client,
             MsigHistoryFilters::url(self.url(), safe_address),
             MsigHistoryResponse,
-            filters.as_ref(),
+            filters,
         )
         .map(Option::unwrap)
     }
