@@ -52,6 +52,12 @@ async fn it_gets_tokens() {
 
 #[tokio::test]
 #[tracing_test::traced_test]
+async fn it_gets_balances() {
+    dbg!(CLIENT.balances(*SAFE).await.unwrap());
+}
+
+#[tokio::test]
+#[tracing_test::traced_test]
 async fn it_proposes() {
     let tx: MetaTransactionData = MetaTransactionData {
         to: ChecksumAddress::from(*ADDR),
