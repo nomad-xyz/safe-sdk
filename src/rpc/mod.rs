@@ -7,6 +7,9 @@ pub mod info;
 /// Token Info
 pub mod tokens;
 
+/// Balances of a safe.
+pub mod balances;
+
 /// History of Safe msig transactions
 pub mod msig_history;
 
