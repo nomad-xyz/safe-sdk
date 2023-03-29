@@ -105,7 +105,9 @@ pub struct Erc20Info {
     /// The token symbol
     pub symbol: String,
     /// The token decimals
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub decimals: Option<u32>,
     /// The logo URI, if it exists.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub logo_uri: Option<String>,
 }
