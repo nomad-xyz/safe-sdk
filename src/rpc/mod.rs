@@ -1,3 +1,5 @@
+mod util;
+
 /// Common RPC types
 pub mod common;
 

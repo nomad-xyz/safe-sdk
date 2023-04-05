@@ -1,9 +1,9 @@
-use std::collections::HashMap;
+use std::{collections::HashMap};
 
 use ethers::types::{Address, U256};
 use reqwest::Url;
 
-use crate::{client::ClientResult, SafeClient};
+use crate::{client::ClientResult, SafeClient, rpc::util::string_as_f64};
 
 /// Safe balances response
 pub type BalancesResponse = Vec<BalanceResponse>;
@@ -89,9 +89,12 @@ pub struct BalanceResponse {
     /// The timestamp of when the conversion was made
     pub timestamp: String,
     /// The balance in USD of the token
-    pub fiat_balance: String,
     /// The conversion rate used to calculate the fiat balance
-    pub fiat_conversion: String,
+    #[serde(default, deserialize_with="string_as_f64")]
+    pub fiat_balance: f64,
+    /// The conversion rate used to calculate the fiat balance
+    #[serde(default, deserialize_with="string_as_f64")]
+    pub fiat_conversion: f64,
     /// The currency used to calculate the fiat balance
     pub fiat_code: String,
 }
