@@ -1,5 +1,6 @@
 use std::{collections::HashMap};
 
+use chrono::{DateTime, Utc};
 use ethers::types::{Address, U256};
 use reqwest::Url;
 
@@ -87,7 +88,7 @@ pub struct BalanceResponse {
     /// The value in eth of the token
     pub eth_value: String,
     /// The timestamp of when the conversion was made
-    pub timestamp: String,
+    pub timestamp: DateTime<Utc>,
     /// The balance in USD of the token
     /// The conversion rate used to calculate the fiat balance
     #[serde(default, deserialize_with="string_as_f64")]
