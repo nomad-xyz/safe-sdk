@@ -1,5 +1,8 @@
+use serde::{
+    de::{Error, Unexpected, Visitor},
+    Deserializer,
+};
 use std::fmt;
-use serde::{Deserializer, de::{Visitor, Unexpected, Error}};
 
 /// Small utility function to deserialize a string into a f64.
 pub(crate) fn string_as_f64<'de, D>(deserializer: D) -> Result<f64, D::Error>
