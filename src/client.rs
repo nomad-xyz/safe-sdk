@@ -10,6 +10,7 @@ use crate::{
     json_get, json_post,
     networks::{self, TxService},
     rpc::{
+        balances::{BalancesFilters, BalancesRequest, BalancesResponse},
         common::ErrorResponse,
         estimate::{EstimateRequest, EstimateResponse},
         info::{SafeInfoRequest, SafeInfoResponse},
@@ -166,6 +167,39 @@ impl SafeClient {
             SafeInfoResponse,
         )
         .map(Option::unwrap)
+    }
+
+    /// Get information about the balances on a particular Safe from the API.
+    #[tracing::instrument(skip(self))]
+    pub async fn balances(&self, safe_address: Address) -> ClientResult<BalancesResponse> {
+        json_get!(
+            &self.client,
+            BalancesRequest::url(self.url(), safe_address),
+            BalancesResponse,
+        )
+        .map(Option::unwrap)
+    }
+
+    /// Get filtered information about the balances on a particular Safe from the API.
+    #[tracing::instrument(skip(self, filters))]
+    pub async fn filtered_balances(
+        &self,
+        safe_address: Address,
+        filters: impl IntoIterator<Item = (&'static str, String)>,
+    ) -> ClientResult<BalancesResponse> {
+        json_get!(
+            &self.client,
+            BalancesRequest::url(self.url(), safe_address),
+            BalancesResponse,
+            filters,
+        )
+        .map(Option::unwrap)
+    }
+
+    /// Create a filter builder for balances
+    #[tracing::instrument(skip(self))]
+    pub fn balances_builder(&self, safe_address: Address) -> BalancesFilters<'_> {
+        BalancesFilters::new(self)
     }
 
     /// Get information about tokens available on the API
